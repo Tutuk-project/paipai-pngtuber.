@@ -262,15 +262,22 @@ Deno.serve(async (req) => {
       const supportToken = String(body.support_session || "");
       const { data: session, error: sessionError } = await db.from("vio_support_sessions").select("id,target_user_id,expires_at,ended_at").eq("admin_user_id", admin.id).eq("target_user_id", targetId).eq("token_hash", await sha256(supportToken)).is("ended_at", null).gt("expires_at", new Date().toISOString()).maybeSingle();
       if (sessionError || !session) return json({ ok: false, error: "Support session is invalid or expired." }, 403);
-      const { data: target, error } = await db.from("vio_app_users").select("id,username,role,is_active,created_at,last_seen_at,vio_profiles(*),vio_characters(*,vio_character_assets(*))").eq("id", targetId).single();
+      const { data: target, error } = await db.from("vio_app_users").select("id,username,role,is_active,created_at,last_seen_at,vio_profiles(*),vio_characters(*,vio_character_assets(*),vio_character_accessories(*))").eq("id", targetId).single();
       if (error) throw error;
       if (!target.is_active || target.role === "admin") return json({ ok: false, error: "Support View target is no longer eligible." }, 403);
       const { data: assetRows, error: assetError } = await db.from("vio_character_assets").select("id,character_id,expression,bucket_id,storage_path,mime_type,size_bytes,updated_at").eq("user_id", targetId);
       if (assetError) throw assetError;
-      const assets = await Promise.all((assetRows || []).map(async (asset: any) => {
+      const { data: accessoryRows, error: accessoryError } = await db.from("vio_character_accessories").select("id,character_id,name,bucket_id,storage_path,mime_type,size_bytes,updated_at").eq("user_id", targetId);
+      if (accessoryError) throw accessoryError;
+      const expressionAssets = await Promise.all((assetRows || []).map(async (asset: any) => {
         const { data: signed, error: signedError } = await db.storage.from(asset.bucket_id).createSignedUrl(asset.storage_path, 900);
-        return { ...asset, signed_url: signedError ? null : signed?.signedUrl || null };
+        return { ...asset, asset_type: "expression", signed_url: signedError ? null : signed?.signedUrl || null };
       }));
+      const accessoryAssets = await Promise.all((accessoryRows || []).map(async (asset: any) => {
+        const { data: signed, error: signedError } = await db.storage.from(asset.bucket_id).createSignedUrl(asset.storage_path, 900);
+        return { ...asset, expression: asset.name, asset_type: "accessory", signed_url: signedError ? null : signed?.signedUrl || null };
+      }));
+      const assets = [...expressionAssets, ...accessoryAssets];
       await audit(db, admin.id, targetId, "support_user_detail_viewed", { support_session_id: session.id });
       return json({ ok: true, user: target, assets, support_mode: true, support_expires_at: session.expires_at });
     }
@@ -332,8 +339,11 @@ Deno.serve(async (req) => {
       if (target.username === "paipai77" || target.role === "admin") return json({ ok: false, error: "The root Admin account is protected." }, 403);
       const { data: assets, error: assetsError } = await db.from("vio_character_assets").select("bucket_id,storage_path").eq("user_id", targetId);
       if (assetsError) throw assetsError;
-      for (const bucket of [...new Set((assets || []).map((asset: any) => asset.bucket_id))]) {
-        const paths = (assets || []).filter((asset: any) => asset.bucket_id === bucket).map((asset: any) => asset.storage_path);
+      const { data: accessoryAssets, error: accessoryAssetsError } = await db.from("vio_character_accessories").select("bucket_id,storage_path").eq("user_id", targetId);
+      if (accessoryAssetsError) throw accessoryAssetsError;
+      const allStoredAssets = [...(assets || []), ...(accessoryAssets || [])];
+      for (const bucket of [...new Set(allStoredAssets.map((asset: any) => asset.bucket_id))]) {
+        const paths = allStoredAssets.filter((asset: any) => asset.bucket_id === bucket).map((asset: any) => asset.storage_path);
         if (paths.length) {
           const { error: storageError } = await db.storage.from(bucket).remove(paths);
           if (storageError) throw new Error(`STORAGE_CLEANUP_FAILED: ${storageError.message}`);
@@ -405,13 +415,24 @@ Deno.serve(async (req) => {
       const { data: target, error: targetError } = await db.from("vio_app_users").select("username,role").eq("id", targetId).single();
       if (targetError) throw targetError;
       if (target.username === "paipai77" || target.role === "admin") return json({ ok: false, error: "Admin assets are protected from support-view deletion." }, 403);
-      const { data: asset, error: assetError } = await db.from("vio_character_assets").select("id,bucket_id,storage_path,expression").eq("id", assetId).eq("user_id", targetId).single();
-      if (assetError) throw assetError;
-      const { error: storageError } = await db.storage.from(asset.bucket_id).remove([asset.storage_path]);
-      if (storageError) throw storageError;
-      const { error: rowError } = await db.from("vio_character_assets").delete().eq("id", assetId).eq("user_id", targetId);
-      if (rowError) throw rowError;
-      await audit(db, admin.id, targetId, "admin_asset_deleted", { asset_id: assetId, expression: asset.expression });
+      const assetType = String(body.asset_type || "expression");
+      if (assetType === "accessory") {
+        const { data: asset, error: assetError } = await db.from("vio_character_accessories").select("id,bucket_id,storage_path,name").eq("id", assetId).eq("user_id", targetId).single();
+        if (assetError) throw assetError;
+        const { error: storageError } = await db.storage.from(asset.bucket_id).remove([asset.storage_path]);
+        if (storageError) throw storageError;
+        const { error: rowError } = await db.from("vio_character_accessories").delete().eq("id", assetId).eq("user_id", targetId);
+        if (rowError) throw rowError;
+        await audit(db, admin.id, targetId, "admin_accessory_deleted", { asset_id: assetId, name: asset.name, support_session_id: session.id });
+      } else {
+        const { data: asset, error: assetError } = await db.from("vio_character_assets").select("id,bucket_id,storage_path,expression").eq("id", assetId).eq("user_id", targetId).single();
+        if (assetError) throw assetError;
+        const { error: storageError } = await db.storage.from(asset.bucket_id).remove([asset.storage_path]);
+        if (storageError) throw storageError;
+        const { error: rowError } = await db.from("vio_character_assets").delete().eq("id", assetId).eq("user_id", targetId);
+        if (rowError) throw rowError;
+        await audit(db, admin.id, targetId, "admin_asset_deleted", { asset_id: assetId, expression: asset.expression, support_session_id: session.id });
+      }
       return json({ ok: true });
     }
 
