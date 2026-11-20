@@ -947,12 +947,13 @@ Deno.serve(async (req) => {
     if (action === "room_members") {
       const user = requireUser();
       const roomId = String(body.room_id || "");
-      const { data: membership } = await db.from("vio_room_members").select("user_id").eq("room_id", roomId).eq("user_id", user.id).maybeSingle();
+      const { data: membership, error: membershipError } = await db.from("vio_room_members").select("user_id").eq("room_id", roomId).eq("user_id", user.id).maybeSingle();
+      if (membershipError) throw membershipError;
       if (!membership) return json({ ok: false, error: "You are not a member of this room." }, 403);
-      const { data: members, error } = await db.from("vio_room_members").select("user_id,is_host,state,state_updated_at,vio_app_users!inner(username),vio_profiles!inner(preferences,active_character_id),vio_characters(id,name,vio_character_assets(expression,storage_path,bucket_id),vio_character_accessories(id,name,storage_path,bucket_id,x,y,w,h,mirror,follow_avatar,effects_enabled,sort_order)),vio_room_overrides(overrides)").eq("room_id", roomId);
+      const { data: members, error } = await db.from("vio_room_members").select("user_id,is_host,state,state_updated_at,vio_app_users!inner(username,profile:vio_profiles!inner(preferences,active_character_id),characters:vio_characters(id,name,vio_character_assets(expression,storage_path,bucket_id),vio_character_accessories(id,name,storage_path,bucket_id,x,y,w,h,mirror,follow_avatar,effects_enabled,sort_order))),vio_room_overrides(overrides)").eq("room_id", roomId);
       if (error) throw error;
       const mapped = await Promise.all((members || []).map(async (member: any) => {
-        const activeCharacter = (member.vio_characters || []).find((item: any) => item.id === member.vio_profiles?.active_character_id) || member.vio_characters?.[0];
+        const activeCharacter = (member.vio_app_users?.characters || []).find((item: any) => item.id === member.vio_app_users?.profile?.active_character_id) || member.vio_characters?.[0];
         const assets: Record<string, string> = {};
         for (const asset of activeCharacter?.vio_character_assets || []) {
           const { data: signed } = await db.storage.from(asset.bucket_id).createSignedUrl(asset.storage_path, 3600);
@@ -963,7 +964,7 @@ Deno.serve(async (req) => {
           if (signError || !data?.signedUrl) return null;
           return { id: item.id, name: item.name, src: data.signedUrl, x: item.x, y: item.y, w: item.w, h: item.h, mirror: item.mirror, follow: item.follow_avatar, effectsEnabled: item.effects_enabled, sort_order: item.sort_order };
         }));
-        return { user_id: member.user_id, is_host: member.is_host, username: member.vio_app_users?.username || "Unknown", state: member.state || "idle", state_updated_at: member.state_updated_at, assets, accessories: accessories.filter(Boolean), preferences: await signBackground(db, member.vio_profiles?.preferences || {}), overrides: member.vio_room_overrides?.[0]?.overrides || {} };
+        return { user_id: member.user_id, is_host: member.is_host, username: member.vio_app_users?.username || "Unknown", state: member.state || "idle", state_updated_at: member.state_updated_at, assets, accessories: accessories.filter(Boolean), preferences: await signBackground(db, member.vio_app_users?.profile?.preferences || {}), overrides: member.vio_room_overrides?.[0]?.overrides || {} };
       }));
       return json({ ok: true, members: mapped });
     }
@@ -972,7 +973,8 @@ Deno.serve(async (req) => {
       const user = requireUser();
       const roomId = String(body.room_id || "");
       const overrides = body.overrides && typeof body.overrides === "object" ? body.overrides as Json : {};
-      const { data: member } = await db.from("vio_room_members").select("user_id").eq("room_id", roomId).eq("user_id", user.id).maybeSingle();
+      const { data: member, error: memberError } = await db.from("vio_room_members").select("user_id").eq("room_id", roomId).eq("user_id", user.id).maybeSingle();
+      if (memberError) throw memberError;
       if (!member) return json({ ok: false, error: "Not a room member." }, 403);
       const allowed = ["scale", "x", "y", "sensitivity", "boostDb", "deviceId"];
       const clean: Json = {};
@@ -1099,11 +1101,11 @@ Deno.serve(async (req) => {
       if (error || !room || room.status !== "active" || new Date(room.expires_at).getTime() <= Date.now() || room.overlay_token_hash !== await sha256(token)) return json({ ok: false, error: "Overlay link is invalid or room is closed or expired." }, 403);
       const { error: deviceError } = await db.from("vio_overlay_devices").upsert({ auth_user_id: authUser.id, room_id: roomId }, { onConflict: "auth_user_id" });
       if (deviceError) throw deviceError;
-      const { data: members, error: memberError } = await db.from("vio_room_members").select("user_id,is_host,state,state_updated_at,vio_app_users!inner(username),vio_profiles!inner(preferences,active_character_id),vio_characters(id,vio_character_assets(expression,storage_path,bucket_id),vio_character_accessories(id,name,storage_path,bucket_id,x,y,w,h,mirror,follow_avatar,effects_enabled,sort_order)),vio_room_overrides(overrides)").eq("room_id", roomId);
+      const { data: members, error: memberError } = await db.from("vio_room_members").select("user_id,is_host,state,state_updated_at,vio_app_users!inner(username,profile:vio_profiles!inner(preferences,active_character_id),characters:vio_characters(id,vio_character_assets(expression,storage_path,bucket_id),vio_character_accessories(id,name,storage_path,bucket_id,x,y,w,h,mirror,follow_avatar,effects_enabled,sort_order))),vio_room_overrides(overrides)").eq("room_id", roomId);
       if (memberError) throw memberError;
       const mapped = await Promise.all((members || []).map(async (member: any) => {
         const assets: Record<string, string> = {};
-        const character = (member.vio_characters || []).find((item: any) => item.id === member.vio_profiles?.active_character_id) || member.vio_characters?.[0];
+        const character = (member.vio_app_users?.characters || []).find((item: any) => item.id === member.vio_app_users?.profile?.active_character_id) || member.vio_characters?.[0];
         for (const asset of character?.vio_character_assets || []) {
           const { data: signed } = await db.storage.from(asset.bucket_id).createSignedUrl(asset.storage_path, 3600);
           if (signed?.signedUrl) assets[asset.expression] = signed.signedUrl;
@@ -1113,15 +1115,25 @@ Deno.serve(async (req) => {
           if (signError || !data?.signedUrl) return null;
           return { id: item.id, name: item.name, src: data.signedUrl, x: item.x, y: item.y, w: item.w, h: item.h, mirror: item.mirror, follow: item.follow_avatar, effectsEnabled: item.effects_enabled, sort_order: item.sort_order };
         }));
-        return { user_id: member.user_id, is_host: member.is_host, username: member.vio_app_users?.username || "Unknown", state: member.state || "idle", state_updated_at: member.state_updated_at, assets, accessories: accessories.filter(Boolean), preferences: await signBackground(db, member.vio_profiles?.preferences || {}), overrides: member.vio_room_overrides?.[0]?.overrides || {} };
+        return { user_id: member.user_id, is_host: member.is_host, username: member.vio_app_users?.username || "Unknown", state: member.state || "idle", state_updated_at: member.state_updated_at, assets, accessories: accessories.filter(Boolean), preferences: await signBackground(db, member.vio_app_users?.profile?.preferences || {}), overrides: member.vio_room_overrides?.[0]?.overrides || {} };
       }));
       return json({ ok: true, room: { id: room.id, capacity: room.capacity, host_user_id: room.host_user_id }, members: mapped });
     }
 
     return json({ ok: false, error: `Unknown action: ${action}` }, 400);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    const map: Record<string, number> = { DEVICE_NOT_PAIRED: 401, ADMIN_ONLY: 403, ACCOUNT_NOT_FOUND: 404, PAIRING_CODE_INVALID: 403, DEVICE_ALREADY_BOUND: 409, ROOM_NOT_FOUND: 404, ROOM_FULL: 409, ALREADY_IN_ROOM: 409, ADMIN_ALREADY_EXISTS: 409 };
-    return json({ ok: false, error: message }, map[message] || 400);
+    const value = error && typeof error === "object" ? error as Record<string, unknown> : {};
+    const message = error instanceof Error ? error.message : String(value.message || value.details || error || "Unknown backend error");
+    const code = typeof value.code === "string" ? value.code : undefined;
+    const details = typeof value.details === "string" ? value.details : undefined;
+    const hint = typeof value.hint === "string" ? value.hint : undefined;
+    console.error("vio-api request failed", { message, code, details, hint });
+    const map: Record<string, number> = {
+      DEVICE_NOT_PAIRED: 401, ADMIN_ONLY: 403, ACCOUNT_NOT_FOUND: 404,
+      PAIRING_CODE_INVALID: 403, DEVICE_ALREADY_BOUND: 409, ROOM_NOT_FOUND: 404,
+      ROOM_FULL: 409, ALREADY_IN_ROOM: 409, ADMIN_ALREADY_EXISTS: 409
+    };
+    const status = map[message] || (code ? 500 : 400);
+    return json({ ok: false, error: message, ...(code ? { code } : {}), ...(details ? { details } : {}), ...(hint ? { hint } : {}) }, status);
   }
 });
