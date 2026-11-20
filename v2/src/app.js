@@ -751,8 +751,110 @@ function drawPreview() {
   avatarRenderer.setBackgroundImage(background.mode === "image" ? background.src : null);
   avatarRenderer.setBackgroundVideo(background.mode === "video" ? background.src : null);
   avatarRenderer.setAccessories(characterAccessories);
+  bindAccessoryCanvasDrag(canvas);
   const hasAvatar = !!(assetUrls.idle || assetUrls.talking || assetUrls.blink || assetUrls.talking_blink);
   $("emptyAvatar").hidden = hasAvatar;
+}
+
+function accessoryCanvasPoint(event, canvas) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (event.clientX - rect.left) * canvas.width / Math.max(1, rect.width),
+    y: (event.clientY - rect.top) * canvas.height / Math.max(1, rect.height)
+  };
+}
+
+function accessoryScreenBounds(item, canvas) {
+  const W = canvas.width, H = canvas.height;
+  const localX = (Number(item.x ?? 0.5) - 0.5) * W;
+  const localY = (Number(item.y ?? 0.5) - 0.5) * H;
+  const follows = item.follow !== false;
+  const motion = avatarRenderer?.avatarMotion || { centerX: W / 2, centerY: H / 2, rotation: 0, scaleX: 1, scaleY: 1 };
+  let x = localX + W / 2, y = localY + H / 2;
+  let scaleX = 1, scaleY = 1;
+  if (follows) {
+    const dx = localX * motion.scaleX, dy = localY * motion.scaleY;
+    const cos = Math.cos(motion.rotation), sin = Math.sin(motion.rotation);
+    x = motion.centerX + cos * dx - sin * dy;
+    y = motion.centerY + sin * dx + cos * dy;
+    scaleX = Math.abs(motion.scaleX);
+    scaleY = Math.abs(motion.scaleY);
+  }
+  return {
+    x, y,
+    width: Math.max(1, Number(item.w || 0.18) * W * scaleX),
+    height: Math.max(1, Number(item.h || 0.18) * H * scaleY),
+    motion: { ...motion },
+    follows
+  };
+}
+
+function bindAccessoryCanvasDrag(canvas) {
+  if (canvas.dataset.accessoryDragBound === "1") return;
+  canvas.dataset.accessoryDragBound = "1";
+  canvas.style.touchAction = "none";
+  canvas.style.cursor = "grab";
+  canvas.addEventListener("pointerdown", event => {
+    if (!characterAccessories.length) return;
+    const point = accessoryCanvasPoint(event, canvas);
+    let selected = null;
+    for (const item of [...characterAccessories].reverse()) {
+      const bounds = accessoryScreenBounds(item, canvas);
+      if (Math.abs(point.x - bounds.x) <= bounds.width / 2 + 10 && Math.abs(point.y - bounds.y) <= bounds.height / 2 + 10) {
+        selected = { item, bounds };
+        break;
+      }
+    }
+    if (!selected && selectedAccessoryId) {
+      const item = characterAccessories.find(entry => entry.id === selectedAccessoryId);
+      if (item) selected = { item, bounds: accessoryScreenBounds(item, canvas) };
+    }
+    if (!selected) return;
+    event.preventDefault();
+    selectedAccessoryId = selected.item.id;
+    accessoryDragState = {
+      pointerId: event.pointerId,
+      item: selected.item,
+      startX: point.x,
+      startY: point.y,
+      itemX: Number(selected.item.x ?? 0.5),
+      itemY: Number(selected.item.y ?? 0.5),
+      motion: selected.bounds.motion,
+      follows: selected.bounds.follows
+    };
+    canvas.setPointerCapture(event.pointerId);
+    canvas.style.cursor = "grabbing";
+    renderAccessorySettingsList();
+  });
+  canvas.addEventListener("pointermove", event => {
+    if (!accessoryDragState || accessoryDragState.pointerId !== event.pointerId) return;
+    const point = accessoryCanvasPoint(event, canvas);
+    const dx = point.x - accessoryDragState.startX;
+    const dy = point.y - accessoryDragState.startY;
+    let localDx = dx, localDy = dy;
+    if (accessoryDragState.follows) {
+      const motion = accessoryDragState.motion;
+      const cos = Math.cos(motion.rotation), sin = Math.sin(motion.rotation);
+      const rotatedX = cos * dx + sin * dy;
+      const rotatedY = -sin * dx + cos * dy;
+      localDx = rotatedX / (Math.abs(motion.scaleX) < 0.0001 ? 1 : motion.scaleX);
+      localDy = rotatedY / (Math.abs(motion.scaleY) < 0.0001 ? 1 : motion.scaleY);
+    }
+    accessoryDragState.item.x = Math.max(0, Math.min(1, accessoryDragState.itemX + localDx / canvas.width));
+    accessoryDragState.item.y = Math.max(0, Math.min(1, accessoryDragState.itemY + localDy / canvas.height));
+    drawPreview();
+  });
+  const finishDrag = async event => {
+    if (!accessoryDragState || accessoryDragState.pointerId !== event.pointerId) return;
+    const item = accessoryDragState.item;
+    accessoryDragState = null;
+    canvas.style.cursor = "grab";
+    try { if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId); } catch {}
+    await saveAccessorySettings(item);
+    renderAccessorySettingsList();
+  };
+  canvas.addEventListener("pointerup", finishDrag);
+  canvas.addEventListener("pointercancel", finishDrag);
 }
 
 function openRoomChooser() {
