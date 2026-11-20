@@ -267,7 +267,7 @@ function renderSettings(menuId) {
     const modeField = document.createElement("div"); modeField.className = "setting-field";
     const modeLabel = document.createElement("label"); modeLabel.textContent = "Background mode";
     const mode = document.createElement("select"); mode.className = "select-input";
-    mode.innerHTML = '<option value="transparent">Transparent</option><option value="solid">Solid color</option><option value="gradient">Gradient</option>';
+    mode.innerHTML = '<option value="transparent">Transparent</option><option value="solid">Solid color</option><option value="gradient">Gradient</option><option value="image">Image / GIF</option><option value="video">Video</option>';
     mode.value = background.mode;
     mode.addEventListener("change", () => { background.mode = mode.value; prefs.background = { ...background }; drawPreview(); });
     modeField.append(modeLabel, mode); bgWrap.append(modeField);
@@ -278,6 +278,36 @@ function renderSettings(menuId) {
       input.addEventListener("input", () => { background[key] = input.value; prefs.background = { ...background }; drawPreview(); });
       field.append(caption,input); bgWrap.append(field);
     }
+    const mediaField = document.createElement("div"); mediaField.className = "setting-field";
+    const mediaLabel = document.createElement("label"); mediaLabel.textContent = "Background image, GIF, or video";
+    const mediaInput = document.createElement("input"); mediaInput.type = "file"; mediaInput.className = "text-input";
+    mediaInput.accept = "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm";
+    const mediaHint = document.createElement("p"); mediaHint.className = "muted";
+    mediaHint.textContent = "Image/GIF maks. 20 MB. Video MP4/WebM maks. 60 MB. Video diputar muted dan loop.";
+    mediaInput.addEventListener("change", async () => {
+      const file = mediaInput.files?.[0];
+      mediaInput.value = "";
+      if (!file) return;
+      if (!supabase || !currentUser) return alert("Backend belum siap.");
+      const isVideo = file.type.startsWith("video/");
+      const allowed = ["image/png", "image/jpeg", "image/webp", "image/gif", "video/mp4", "video/webm"];
+      const limit = isVideo ? 60 * 1024 * 1024 : 20 * 1024 * 1024;
+      if (!allowed.includes(file.type) || file.size < 1 || file.size > limit) return alert("Format atau ukuran background tidak didukung.");
+      const extensions = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "video/mp4": "mp4", "video/webm": "webm" };
+      const storagePath = `${currentUser.id}/background/${crypto.randomUUID()}.${extensions[file.type]}`;
+      try {
+        const { error } = await supabase.storage.from("vio-studio-assets").upload(storagePath, file, { upsert: false, contentType: file.type, cacheControl: "3600" });
+        if (error) throw error;
+        const result = await api("record_background_asset", { storage_path: storagePath, mime_type: file.type, size_bytes: file.size });
+        Object.assign(background, result.background);
+        prefs.background = { ...background };
+        mode.value = background.mode;
+        drawPreview();
+        showMessage("loginMessage", "Background berhasil diunggah.", "success");
+      } catch (error) { alert(`Upload background gagal: ${error.message}`); }
+    });
+    mediaField.append(mediaLabel, mediaInput, mediaHint);
+    bgWrap.append(mediaField);
     const effectsTitle = document.createElement("h3"); effectsTitle.textContent = "Visual effects";
     const effectsWrap = document.createElement("div"); effectsWrap.className = "setting-grid";
     const effects = { glow:{enabled:false,intensity:24,color:"#ffd7b8"}, shadow:{enabled:false,intensity:16,color:"#101010"}, stroke:{enabled:false,intensity:45,color:"#ffffff",thickness:5}, filter:{enabled:false,hue:0,saturation:100,brightness:100,contrast:100,grayscale:0,sepia:0}, distort:{enabled:false,intensity:20}, ...(prefs.effects || {}) };
@@ -391,6 +421,7 @@ async function login(username, pairingCode) {
     const assets = await api("my_assets");
     assetUrls = { ...assetUrls, ...(assets.assets || {}) };
     characterAccessories = assets.accessories || [];
+    if (assets.background) profilePreferences.background = assets.background;
     drawPreview();
   } catch (assetError) { console.info("No saved character assets yet:", assetError.message); }
   $("footerSession").textContent = `Session: ${currentUser.username} · ${currentUser.role}`;
@@ -672,6 +703,9 @@ function drawPreview() {
   avatarRenderer.setAssets(assetUrls);
   avatarRenderer.setState(currentMicState);
   avatarRenderer.setPreferences(profilePreferences);
+  const background = profilePreferences.background || {};
+  avatarRenderer.setBackgroundImage(background.mode === "image" ? background.src : null);
+  avatarRenderer.setBackgroundVideo(background.mode === "video" ? background.src : null);
   avatarRenderer.setAccessories(characterAccessories);
   const hasAvatar = !!(assetUrls.idle || assetUrls.talking || assetUrls.blink || assetUrls.talking_blink);
   $("emptyAvatar").hidden = hasAvatar;
