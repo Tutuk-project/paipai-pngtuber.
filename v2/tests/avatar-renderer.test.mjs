@@ -31,12 +31,9 @@ function makeRenderer(items, effects = {}) {
 const image = { complete: true, naturalWidth: 100, width: 100, height: 100 };
 
 test("bloom dominant-color sampling ignores transparent pixels and has a fallback", () => {
-  const pixels = new Uint8ClampedArray([
-    255, 0, 0, 255,
-    0, 0, 0, 0,
-    0, 100, 200, 255,
-    0, 0, 0, 0
-  ]);
+  const pixels = new Uint8ClampedArray(64);
+  pixels.set([255, 0, 0, 255], 0);
+  pixels.set([0, 100, 200, 255], 16);
   assert.equal(averageVisibleColor(pixels), "rgb(128,50,100)");
   assert.equal(averageVisibleColor(new Uint8ClampedArray(8), "#123456"), "#123456");
 });
