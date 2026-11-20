@@ -1,0 +1,40 @@
+name: Vio-Studio v2 development CI
+
+on:
+  push:
+    branches:
+      - develop/vio-studio-v2
+    paths:
+      - "v2/**"
+      - ".github/workflows/vio-v2-ci.yml"
+  pull_request:
+    branches:
+      - develop/vio-studio-v2
+    paths:
+      - "v2/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: vio-v2-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout development source
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref || github.ref }}
+      - name: Check JavaScript syntax and run regression tests
+        working-directory: v2
+        run: |
+          set -euo pipefail
+          node --check src/app.js
+          node --check src/avatar-renderer.js
+          node --check src/audio-engine.js
+          node --check src/overlay.js
+          node --test tests/*.test.mjs
