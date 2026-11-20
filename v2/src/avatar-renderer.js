@@ -1,6 +1,6 @@
 const DEFAULTS = {
   scale: 1, mirror: true, bounce: 0.035, sway: 0, breathing: 0, blinkRate: 4,
-  fps: 30, offsetX: 0, offsetY: 0, background: { mode: "transparent", color: "#11151b", color1: "#254c4a", color2: "#e2b48c", angle: 135 },
+  fps: 30, outputWidth: 1080, outputHeight: 1920, offsetX: 0, offsetY: 0, background: { mode: "transparent", color: "#11151b", color1: "#254c4a", color2: "#e2b48c", angle: 135 },
   effects: { glow: { enabled: false, intensity: 45, color: "#ffd7b8" }, shadow: { enabled: false, intensity: 45, color: "#101010" }, stroke: { enabled: false, intensity: 45, color: "#ffffff", thickness: 5 }, filter: { enabled: false, hue: 0, saturation: 100, brightness: 100, contrast: 100, grayscale: 0, sepia: 0 }, distort: { enabled: false, intensity: 20 } }
 };
 
