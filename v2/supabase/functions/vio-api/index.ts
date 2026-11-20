@@ -62,6 +62,14 @@ async function enqueueStorageCleanup(db: SupabaseClient, bucketId: string, stora
   return data;
 }
 
+async function cancelStorageCleanup(db: SupabaseClient, jobId: string, reason: string) {
+  const { error } = await db.from("vio_storage_cleanup_queue").update({
+    processed_at: new Date().toISOString(),
+    last_error: `Cancelled: ${reason}`.slice(0, 1000)
+  }).eq("id", jobId);
+  if (error) throw error;
+}
+
 async function processStorageCleanup(db: SupabaseClient, job: any) {
   const { error: storageError } = await db.storage.from(job.bucket_id).remove([job.storage_path]);
   const attempts = (Number(job.attempts) || 0) + 1;
@@ -401,28 +409,46 @@ Deno.serve(async (req) => {
       const { data: target, error: targetError } = await db.from("vio_app_users").select("id,username,role").eq("id", targetId).single();
       if (targetError) throw targetError;
       if (target.username === "paipai77" || target.role === "admin") return json({ ok: false, error: "The root Admin account is protected." }, 403);
-      const { data: assets, error: assetsError } = await db.from("vio_character_assets").select("bucket_id,storage_path").eq("user_id", targetId);
-      if (assetsError) throw assetsError;
-      const { data: accessoryAssets, error: accessoryAssetsError } = await db.from("vio_character_accessories").select("bucket_id,storage_path").eq("user_id", targetId);
-      if (accessoryAssetsError) throw accessoryAssetsError;
-      const allStoredAssets = [...(assets || []), ...(accessoryAssets || [])];
-      for (const bucket of [...new Set(allStoredAssets.map((asset: any) => asset.bucket_id))]) {
-        const paths = allStoredAssets.filter((asset: any) => asset.bucket_id === bucket).map((asset: any) => asset.storage_path);
-        if (paths.length) {
-          const { error: storageError } = await db.storage.from(bucket).remove(paths);
-          if (storageError) throw new Error(`STORAGE_CLEANUP_FAILED: ${storageError.message}`);
-        }
+      const [assetsQ, accessoriesQ, profileQ] = await Promise.all([
+        db.from("vio_character_assets").select("bucket_id,storage_path").eq("user_id", targetId),
+        db.from("vio_character_accessories").select("bucket_id,storage_path").eq("user_id", targetId),
+        db.from("vio_profiles").select("preferences").eq("user_id", targetId).maybeSingle()
+      ]);
+      if (assetsQ.error) throw assetsQ.error;
+      if (accessoriesQ.error) throw accessoriesQ.error;
+      if (profileQ.error) throw profileQ.error;
+      const background = (profileQ.data?.preferences as any)?.background;
+      const allStoredAssets = [...(assetsQ.data || []), ...(accessoriesQ.data || [])];
+      if (background?.storage_path && background.bucket_id === "vio-backgrounds") allStoredAssets.push({ bucket_id: background.bucket_id, storage_path: background.storage_path });
+      const uniqueAssets = [...new Map(allStoredAssets.map((asset: any) => [`${asset.bucket_id}:${asset.storage_path}`, asset])).values()];
+      const cleanupJobs = [];
+      for (const asset of uniqueAssets) {
+        cleanupJobs.push(await enqueueStorageCleanup(db, asset.bucket_id, asset.storage_path, admin.id, targetId, "admin_user_deletion"));
       }
       const { data: devices, error: devicesError } = await db.from("vio_user_devices").select("auth_user_id").eq("app_user_id", targetId);
-      if (devicesError) throw devicesError;
-      await audit(db, admin.id, targetId, "user_deletion_started", { username: target.username, linked_devices: devices?.length || 0 });
-      for (const device of devices || []) {
-        const { error } = await db.auth.admin.deleteUser(device.auth_user_id);
-        if (error) throw new Error(`AUTH_USER_CLEANUP_FAILED: ${error.message}`);
+      if (devicesError) {
+        for (const job of cleanupJobs) await cancelStorageCleanup(db, job.id, "device lookup failed before account deletion");
+        throw devicesError;
       }
-      const { error } = await db.from("vio_app_users").delete().eq("id", targetId);
-      if (error) throw error;
-      return json({ ok: true });
+      await audit(db, admin.id, targetId, "user_deletion_started", { username: target.username, linked_devices: devices?.length || 0, storage_objects: cleanupJobs.length });
+      try {
+        for (const device of devices || []) {
+          const { error } = await db.auth.admin.deleteUser(device.auth_user_id);
+          if (error) throw new Error(`AUTH_USER_CLEANUP_FAILED: ${error.message}`);
+        }
+        const { error } = await db.from("vio_app_users").delete().eq("id", targetId);
+        if (error) throw error;
+      } catch (deleteError) {
+        for (const job of cleanupJobs) await cancelStorageCleanup(db, job.id, "account deletion did not complete");
+        throw deleteError;
+      }
+      let cleanupPending = 0;
+      for (const job of cleanupJobs) {
+        const cleanup = await processStorageCleanup(db, job);
+        if (!cleanup.ok) cleanupPending++;
+      }
+      await audit(db, admin.id, null, "user_deletion_completed", { username: target.username, storage_objects: cleanupJobs.length, cleanup_pending: cleanupPending });
+      return json({ ok: true, cleanup_pending: cleanupPending });
     }
 
     if (action === "profile_get") {
