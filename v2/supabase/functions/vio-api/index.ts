@@ -418,6 +418,13 @@ Deno.serve(async (req) => {
       const displayName = String(body.display_name || user.display_name || user.username).trim().slice(0, 48);
       const preferences = body.preferences && typeof body.preferences === "object" && !Array.isArray(body.preferences) ? JSON.parse(JSON.stringify(body.preferences)) as Json : {};
       if (preferences.background && typeof preferences.background === "object") delete (preferences.background as Json).src;
+      for (const key of ["outputWidth", "outputHeight"]) {
+        if (Object.hasOwn(preferences as Record<string, unknown>, key)) {
+          const value = Number((preferences as Record<string, unknown>)[key]);
+          if (!Number.isInteger(value) || value < 320 || value > 3840) return json({ ok: false, error: `Invalid ${key}; expected an integer from 320 to 3840.` }, 400);
+          (preferences as Record<string, unknown>)[key] = value;
+        }
+      }
       if (JSON.stringify(preferences).length > 24000) return json({ ok: false, error: "Profile settings are too large." }, 413);
       const { error: accountError } = await db.from("vio_app_users").update({ display_name: displayName }).eq("id", user.id);
       if (accountError) throw accountError;
