@@ -322,7 +322,7 @@ export class AvatarRenderer {
     ctx.restore();
     let outputCanvas = canvas;
     let eagleWarp = false;
-    if (ids.includes("eagle") && !sprite.eagleWarp) {
+    if (ids.includes("eagle")) {
       try {
         const sourceContext = canvas.getContext("2d", { willReadFrequently: true });
         const sourcePixels = sourceContext.getImageData(0, 0, canvas.width, canvas.height);
@@ -362,7 +362,7 @@ export class AvatarRenderer {
     } else {
       ctx.drawImage(canvas, x, y, width, height);
     }
-    if (ids.includes("eagle")) {
+    if (ids.includes("eagle") && !sprite.eagleWarp) {
       const intensity = Math.max(0, Math.min(1, Number(this.preferences.effects.eagle.intensity) / 100 || 0.55));
       const radius = Math.min(width, height) * (0.22 + intensity * 0.12);
       ctx.save();
