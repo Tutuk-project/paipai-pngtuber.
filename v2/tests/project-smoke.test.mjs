@@ -355,9 +355,9 @@ test("Realtime read and write require active, unexpired rooms", () => {
   const readPolicy = sql.slice(sql.indexOf("create policy vio_room_realtime_read"), sql.indexOf("drop policy if exists vio_room_realtime_write"));
   const writePolicy = sql.slice(sql.indexOf("create policy vio_room_realtime_write"));
   for (const policy of [readPolicy, writePolicy]) {
-    assert.match(policy, /r\\.status = 'active'/i);
-    assert.match(policy, /r\\.expires_at > now\\(\\)/i);
-    assert.match(policy, /u\\.is_active/i);
+    assert.match(policy, /r\.status\s*=\s*'active'/i);
+    assert.match(policy, /r\.expires_at\s*>\s*now\(\)/i);
+    assert.match(policy, /u\.is_active/i);
   }
-  assert.match(readPolicy, /vio_overlay_devices[\\s\\S]*?r\\.status = 'active'/i);
+  assert.match(readPolicy, /vio_overlay_devices[\s\S]*?r\.status\s*=\s*'active'/i);
 });
