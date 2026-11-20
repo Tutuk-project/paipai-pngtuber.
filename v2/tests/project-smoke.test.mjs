@@ -192,6 +192,8 @@ test("Admin expression deletion and background replacement use durable cleanup",
   assert.ok(adminDelete.includes('"admin_support_expression_delete"'));
   assert.ok(adminDelete.includes("processStorageCleanup(db, job)"));
   assert.ok(background.includes('"background_replaced"'));
+  assert.ok(background.indexOf("enqueueStorageCleanup") < background.indexOf('db.from("vio_profiles").upsert'));
+  assert.ok(background.includes("background replacement profile save failed"));
   assert.ok(background.includes("cleanup_pending: cleanupPending"));
   assert.ok(app.includes("file background lama masih menunggu penghapusan Storage"));
   assert.ok(app.includes("Failed to clean up unregistered background upload:"));
