@@ -1,0 +1,7 @@
+# Local Supabase CLI project identifier only.
+# This does NOT link or authorize any remote project.
+# Always pass the explicit Development project ref to deploy commands.
+project_id = "vio-studio-v2-dev"
+
+[functions.vio-api]
+verify_jwt = true
