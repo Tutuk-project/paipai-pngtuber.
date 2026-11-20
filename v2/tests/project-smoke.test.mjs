@@ -125,6 +125,8 @@ test("portrait and custom output resolutions are shared by editor, room and OBS"
   assert.ok(overlay.includes("member.is_host"));
   assert.ok(overlay.includes("canvas.style.aspectRatio"));
   assert.ok(edge.includes('"outputWidth", "outputHeight"'));
+  assert.ok(app.includes("width * height > 8294400"));
+  assert.ok(edge.includes("outputWidth * outputHeight > 8294400"));
   assert.ok(edge.includes("member.is_host"));
   assert.ok(renderer.includes("outputWidth: 1080, outputHeight: 1920"));
   assert.ok(index.includes('id="avatarCanvas" width="1080" height="1920"'));
