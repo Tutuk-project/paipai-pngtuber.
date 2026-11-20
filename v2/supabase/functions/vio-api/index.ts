@@ -606,7 +606,7 @@ Deno.serve(async (req) => {
       const roomId = String(body.room_id || "");
       const { data: membership } = await db.from("vio_room_members").select("user_id").eq("room_id", roomId).eq("user_id", user.id).maybeSingle();
       if (!membership) return json({ ok: false, error: "You are not a member of this room." }, 403);
-      const { data: members, error } = await db.from("vio_room_members").select("user_id,state,state_updated_at,vio_app_users!inner(username),vio_profiles!inner(preferences,active_character_id),vio_characters(id,name,vio_character_assets(expression,storage_path,bucket_id),vio_character_accessories(id,name,storage_path,bucket_id,x,y,w,h,mirror,follow_avatar,effects_enabled,sort_order)),vio_room_overrides(overrides)").eq("room_id", roomId);
+      const { data: members, error } = await db.from("vio_room_members").select("user_id,is_host,state,state_updated_at,vio_app_users!inner(username),vio_profiles!inner(preferences,active_character_id),vio_characters(id,name,vio_character_assets(expression,storage_path,bucket_id),vio_character_accessories(id,name,storage_path,bucket_id,x,y,w,h,mirror,follow_avatar,effects_enabled,sort_order)),vio_room_overrides(overrides)").eq("room_id", roomId);
       if (error) throw error;
       const mapped = await Promise.all((members || []).map(async (member: any) => {
         const activeCharacter = (member.vio_characters || []).find((item: any) => item.id === member.vio_profiles?.active_character_id) || member.vio_characters?.[0];
@@ -620,7 +620,7 @@ Deno.serve(async (req) => {
           if (signError || !data?.signedUrl) return null;
           return { id: item.id, name: item.name, src: data.signedUrl, x: item.x, y: item.y, w: item.w, h: item.h, mirror: item.mirror, follow: item.follow_avatar, effectsEnabled: item.effects_enabled, sort_order: item.sort_order };
         }));
-        return { user_id: member.user_id, username: member.vio_app_users?.username || "Unknown", state: member.state || "idle", state_updated_at: member.state_updated_at, assets, accessories: accessories.filter(Boolean), preferences: await signBackground(db, member.vio_profiles?.preferences || {}), overrides: member.vio_room_overrides?.[0]?.overrides || {} };
+        return { user_id: member.user_id, is_host: member.is_host, username: member.vio_app_users?.username || "Unknown", state: member.state || "idle", state_updated_at: member.state_updated_at, assets, accessories: accessories.filter(Boolean), preferences: await signBackground(db, member.vio_profiles?.preferences || {}), overrides: member.vio_room_overrides?.[0]?.overrides || {} };
       }));
       return json({ ok: true, members: mapped });
     }
