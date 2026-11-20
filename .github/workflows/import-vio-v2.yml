@@ -1,0 +1,60 @@
+name: Import audited Vio-Studio v2 package
+
+on:
+  push:
+    branches:
+      - develop/vio-studio-v2
+    paths:
+      - Vio-Studio-v2.0-development-audited.zip
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: import-vio-v2-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout development branch
+        uses: actions/checkout@v4
+        with:
+          ref: develop/vio-studio-v2
+
+      - name: Verify and extract package
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="Vio-Studio-v2.0-development-audited.zip"
+          test -f "$archive"
+          echo "73262491037f3ad80aaa98746757deb0cf5e491cfcc8cd968935f5dfa386f130  $archive" | sha256sum -c -
+          rm -rf /tmp/vio-package
+          mkdir -p /tmp/vio-package
+          unzip -q "$archive" -d /tmp/vio-package
+          source_dir="/tmp/vio-package/vio-studio-v2.0"
+          test -f "$source_dir/index.html"
+          test -f "$source_dir/src/app.js"
+          test -f "$source_dir/src/avatar-renderer.js"
+          test -f "$source_dir/supabase/migrations/001_vio_studio_v2.sql"
+          test -f "$source_dir/supabase/functions/vio-api/index.ts"
+          mkdir -p v2
+          cp -a "$source_dir/." v2/
+          rm "$archive"
+          echo "Imported $(find v2 -type f | wc -l) files into /v2"
+
+      - name: Commit extracted source to development branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add v2/ Vio-Studio-v2.0-development-audited.zip
+          if git diff --cached --quiet; then
+            echo "No source changes to commit."
+            exit 0
+          fi
+          git commit -m "Import audited Vio-Studio v2 source into /v2"
+          git push origin HEAD:develop/vio-studio-v2
