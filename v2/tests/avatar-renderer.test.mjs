@@ -45,7 +45,7 @@ test("independent accessory does not inherit avatar transforms", () => {
   const ctx = makeContext();
   const renderer = makeRenderer([{ image, x: 0.75, y: 0.25, w: 0.2, h: 0.25, follow: false }]);
   renderer.drawAccessories(ctx, 200, 160, 0);
-  assert.ok(ctx.calls.some(call => call[0] === "translate" && call[1] === 50 && call[2] === 40));
+  assert.ok(ctx.calls.some(call => call[0] === "translate" && call[1] === 150 && call[2] === 40));
   assert.equal(ctx.calls.filter(call => call[0] === "rotate").length, 0);
   assert.equal(ctx.calls.filter(call => call[0] === "scale").length, 0);
 });
