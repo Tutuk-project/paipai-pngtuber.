@@ -14,7 +14,7 @@
       <div class="sidebar-brand">
         <div class="brand-mark">V</div>
         <div class="brand-copy"><strong>Vio Studio</strong><small>PNGTuber v2.0</small></div>
-        <button id="sidebarToggle" class="icon-button sidebar-toggle" type="button" aria-label="Expand sidebar" title="Expand sidebar">☰</button>
+        <button id="sidebarToggle" class="icon-button sidebar-toggle" type="button" aria-label="Expand sidebar" title="Expand sidebar">›</button>
       </div>
       <nav id="navigation" class="navigation"></nav>
       <div class="sidebar-bottom">
@@ -50,7 +50,7 @@
 
       <section id="editorView" class="view" hidden>
         <section class="preview-card panel-card">
-          <div class="card-heading"><div><p class="eyebrow">LIVE STAGE</p><h2>Avatar Preview</h2></div><div class="preview-actions"><span id="micStateBadge" class="status-pill status-neutral">Mic belum aktif</span><button id="obsLinkButton" class="button button-quiet" type="button">Generate OBS Link</button></div></div>
+          <div class="card-heading"><div><p class="eyebrow">LIVE STAGE</p><h2>Avatar Preview</h2></div><div class="preview-actions"><span id="micStateBadge" class="status-pill status-neutral">Mic stopped</span><button id="micToggleButton" class="button mic-toggle" type="button" aria-pressed="false">Mic OFF</button><button id="obsLinkButton" class="button button-quiet" type="button" data-mode="generate">Generate OBS Link</button></div></div>
           <div class="stage-frame"><canvas id="avatarCanvas" width="1080" height="1920" aria-label="Avatar preview"></canvas><div id="emptyAvatar" class="empty-stage"><div class="empty-avatar-icon">✧</div><strong>Character preview</strong><span>Upload karakter PNG untuk memulai.</span></div></div>
           <div class="preview-footer"><div class="meter-wrap"><div class="meter-caption"><span>Microphone level</span><strong id="meterValue">0%</strong></div><div class="meter-track"><i id="meterBar"></i></div></div><span id="expressionState" class="expression-tag">IDLE</span></div>
         </section>
@@ -58,7 +58,7 @@
       </section>
 
       <section id="collaborationView" class="view" hidden>
-        <section class="room-toolbar panel-card"><div><p class="eyebrow">GO COLLABORATION</p><h2>Room <span id="roomCodeLabel" class="room-code">----</span></h2></div><div class="room-actions"><span id="roomMicStateBadge" class="status-pill status-neutral">Mic off</span><button id="copyRoomCode" class="button button-quiet" type="button">Copy code</button><button id="roomObsLink" class="button button-primary" type="button">OBS Link</button><button id="exitRoom" class="button button-danger" type="button" title="Exit room">↪ Exit</button></div></section>
+        <section class="room-toolbar panel-card"><div><p class="eyebrow">GO COLLABORATION</p><h2>Room <span id="roomCodeLabel" class="room-code">----</span></h2></div><div class="room-actions"><span id="roomMicStateBadge" class="status-pill status-neutral">Mic off</span><button id="roomMicToggleButton" class="button mic-toggle" type="button" aria-pressed="false">Mic OFF</button><button id="copyRoomCode" class="button button-quiet" type="button">Copy code</button><button id="roomObsLink" class="button button-primary" type="button" data-mode="generate">Generate OBS Link</button><button id="exitRoom" class="button button-danger" type="button" title="Exit room">↪ Exit</button></div></section>
         <section class="collab-preview panel-card"><div class="card-heading"><div><p class="eyebrow">SHARED STAGE</p><h2>Live participants</h2></div><span id="participantCount" class="status-pill status-live">0 / 4 connected</span></div><div class="collab-stage-wrap"><canvas id="roomStage" width="1080" height="1920" aria-label="Shared collaboration preview"></canvas><div id="participantNames" class="participant-names"><div class="participant-empty">Waiting for participants…</div></div></div></section>
         <section class="settings-panel panel-card"><div class="card-heading"><div><p class="eyebrow">YOUR ROOM OVERRIDES</p><h2>Personal controls</h2></div></div><div id="roomControls" class="settings-content"></div></section>
       </section>
