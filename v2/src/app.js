@@ -261,6 +261,40 @@ function renderSettings(menuId) {
     mirror.addEventListener("change", () => { prefs.mirror = mirror.checked; drawPreview(); });
     mirrorField.append(mirror, document.createTextNode("Mirror avatar")); grid.append(mirrorField);
 
+    const resolutionTitle = document.createElement("h3"); resolutionTitle.textContent = "Output resolution";
+    const resolutionWrap = document.createElement("div"); resolutionWrap.className = "setting-grid";
+    const resolutionPresetField = document.createElement("div"); resolutionPresetField.className = "setting-field";
+    const resolutionPresetLabel = document.createElement("label"); resolutionPresetLabel.textContent = "Preset";
+    const resolutionPreset = document.createElement("select"); resolutionPreset.className = "select-input";
+    resolutionPreset.innerHTML = '<option value="1080x1920">TikTok Portrait · 1080 × 1920</option><option value="720x1280">Portrait HD · 720 × 1280</option><option value="1920x1080">Landscape Full HD · 1920 × 1080</option><option value="1280x720">Landscape HD · 1280 × 720</option><option value="1080x1080">Square · 1080 × 1080</option><option value="custom">Custom dimensions</option>';
+    const resolutionKey = `${Number(prefs.outputWidth) || 1080}x${Number(prefs.outputHeight) || 1920}`;
+    resolutionPreset.value = ["1080x1920","720x1280","1920x1080","1280x720","1080x1080"].includes(resolutionKey) ? resolutionKey : "custom";
+    resolutionPreset.addEventListener("change", () => {
+      if (resolutionPreset.value !== "custom") {
+        const [width, height] = resolutionPreset.value.split("x").map(Number);
+        prefs.outputWidth = width; prefs.outputHeight = height;
+        widthInput.value = String(width); heightInput.value = String(height);
+        drawPreview();
+      }
+    });
+    resolutionPresetField.append(resolutionPresetLabel, resolutionPreset);
+    const widthField = settingField("Width (px)", "outputWidth", String(prefs.outputWidth || 1080), "320–3840 px");
+    const widthInput = widthField.querySelector("input"); widthInput.type = "number"; widthInput.min = "320"; widthInput.max = "3840"; widthInput.step = "1";
+    const heightField = settingField("Height (px)", "outputHeight", String(prefs.outputHeight || 1920), "320–3840 px");
+    const heightInput = heightField.querySelector("input"); heightInput.type = "number"; heightInput.min = "320"; heightInput.max = "3840"; heightInput.step = "1";
+    const applyCustomResolution = () => {
+      const width = Math.max(320, Math.min(3840, Math.round(Number(widthInput.value) || 1080)));
+      const height = Math.max(320, Math.min(3840, Math.round(Number(heightInput.value) || 1920)));
+      widthInput.value = String(width); heightInput.value = String(height);
+      prefs.outputWidth = width; prefs.outputHeight = height;
+      const key = `${width}x${height}`;
+      resolutionPreset.value = ["1080x1920","720x1280","1920x1080","1280x720","1080x1080"].includes(key) ? key : "custom";
+      drawPreview();
+    };
+    widthInput.addEventListener("change", applyCustomResolution);
+    heightInput.addEventListener("change", applyCustomResolution);
+    resolutionWrap.append(resolutionPresetField, widthField, heightField);
+
     const backgroundTitle = document.createElement("h3"); backgroundTitle.textContent = "Background";
     const background = { mode: "transparent", ...(prefs.background || {}) };
     const bgWrap = document.createElement("div"); bgWrap.className = "setting-grid";
@@ -322,7 +356,7 @@ function renderSettings(menuId) {
       try { await api("profile_save", { display_name: currentUser.display_name || currentUser.username, preferences: prefs }); showMessage("loginMessage","Visual settings saved.","success"); }
       catch (error) { alert(`Gagal menyimpan efek: ${error.message}`); }
     }, true);
-    content.append(grid, backgroundTitle, bgWrap, effectsTitle, effectsWrap, save);
+    content.append(grid, resolutionTitle, resolutionWrap, backgroundTitle, bgWrap, effectsTitle, effectsWrap, save);
     return;
   }
 
