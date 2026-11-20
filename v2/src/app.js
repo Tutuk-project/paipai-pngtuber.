@@ -1408,8 +1408,10 @@ async function startAdminSupportView(userId) {
     const save = actionButton("Save user profile", async () => {
       let preferences; try { preferences = JSON.parse(prefsInput.value || "{}"); } catch { return alert("Profile preferences harus JSON valid."); }
       if (!preferences || typeof preferences !== "object" || Array.isArray(preferences)) return alert("Profile preferences harus berupa objek JSON.");
-      await api("admin_update_profile", { target_user_id: userId, support_session: activeSupportSession?.token, display_name: $("adminTargetDisplayName").value, preferences });
-      alert("Profil pengguna diperbarui dan tercatat di Audit Log.");
+      const saved = await api("admin_update_profile", { target_user_id: userId, support_session: activeSupportSession?.token, display_name: $("adminTargetDisplayName").value, preferences });
+      alert(saved.cleanup_pending
+        ? "Profil diperbarui. File background lama masih menunggu penghapusan Storage; gunakan retry cleanup di Admin."
+        : "Profil pengguna diperbarui dan tercatat di Audit Log.");
     }, true);
     const assetsTitle = document.createElement("h3"); assetsTitle.textContent = "Uploaded character assets";
     const assetsList = document.createElement("div"); assetsList.className = "asset-list";
