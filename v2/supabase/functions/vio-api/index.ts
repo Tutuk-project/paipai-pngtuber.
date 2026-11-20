@@ -341,6 +341,8 @@ Deno.serve(async (req) => {
       if (assetError) throw assetError;
       const { data: accessoryRows, error: accessoryError } = await db.from("vio_character_accessories").select("id,character_id,name,bucket_id,storage_path,mime_type,size_bytes,updated_at").eq("user_id", targetId);
       if (accessoryError) throw accessoryError;
+      const { data: profileRow, error: profileRowError } = await db.from("vio_profiles").select("active_character_id,preferences").eq("user_id", targetId).maybeSingle();
+      if (profileRowError) throw profileRowError;
       const expressionAssets = await Promise.all((assetRows || []).map(async (asset: any) => {
         const { data: signed, error: signedError } = await db.storage.from(asset.bucket_id).createSignedUrl(asset.storage_path, 900);
         return { ...asset, asset_type: "expression", signed_url: signedError ? null : signed?.signedUrl || null };
@@ -349,7 +351,17 @@ Deno.serve(async (req) => {
         const { data: signed, error: signedError } = await db.storage.from(asset.bucket_id).createSignedUrl(asset.storage_path, 900);
         return { ...asset, expression: asset.name, asset_type: "accessory", signed_url: signedError ? null : signed?.signedUrl || null };
       }));
-      const assets = [...expressionAssets, ...accessoryAssets];
+      const background = (profileRow?.preferences as any)?.background;
+      const backgroundAssets = [];
+      if (background?.storage_path && background.bucket_id === "vio-backgrounds") {
+        const { data: signed, error: signedError } = await db.storage.from("vio-backgrounds").createSignedUrl(background.storage_path, 900);
+        backgroundAssets.push({
+          id: background.storage_path, name: "Background", expression: "Background", asset_type: "background",
+          bucket_id: "vio-backgrounds", storage_path: background.storage_path, mime_type: background.mime_type || "unknown",
+          size_bytes: Number(background.size_bytes) || 0, signed_url: signedError ? null : signed?.signedUrl || null
+        });
+      }
+      const assets = [...expressionAssets, ...accessoryAssets, ...backgroundAssets];
       await audit(db, admin.id, targetId, "support_user_detail_viewed", { support_session_id: session.id });
       return json({ ok: true, user: target, assets, support_mode: true, support_expires_at: session.expires_at });
     }
@@ -588,7 +600,28 @@ Deno.serve(async (req) => {
       if (targetError) throw targetError;
       if (target.username === "paipai77" || target.role === "admin") return json({ ok: false, error: "Admin assets are protected from support-view deletion." }, 403);
       const assetType = String(body.asset_type || "expression");
-      if (assetType === "accessory") {
+      if (assetType === "background") {
+        const { data: profileRow, error: profileError } = await db.from("vio_profiles").select("preferences").eq("user_id", targetId).maybeSingle();
+        if (profileError) throw profileError;
+        const preferences = { ...((profileRow?.preferences || {}) as Record<string, any>) };
+        const background = preferences.background || {};
+        if (background.bucket_id !== "vio-backgrounds" || background.storage_path !== assetId) return json({ ok: false, error: "Background asset no longer matches the active profile." }, 409);
+        const job = await enqueueStorageCleanup(db, "vio-backgrounds", background.storage_path, admin.id, targetId, "admin_support_background_delete");
+        const nextBackground = { ...background, mode: "transparent" };
+        delete nextBackground.src;
+        delete nextBackground.storage_path;
+        delete nextBackground.bucket_id;
+        delete nextBackground.mime_type;
+        delete nextBackground.size_bytes;
+        preferences.background = nextBackground;
+        const { error: saveError } = await db.from("vio_profiles").upsert({ user_id: targetId, preferences, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+        if (saveError) {
+          await cancelStorageCleanup(db, job.id, "Admin background profile update failed");
+          throw saveError;
+        }
+        const cleanup = await processStorageCleanup(db, job);
+        await audit(db, admin.id, targetId, "admin_background_deleted", { cleanup_pending: !cleanup.ok, support_session_id: session.id });
+      } else if (assetType === "accessory") {
         const { data: asset, error: assetError } = await db.from("vio_character_accessories").select("id,bucket_id,storage_path,name").eq("id", assetId).eq("user_id", targetId).single();
         if (assetError) throw assetError;
         const job = await enqueueStorageCleanup(db, asset.bucket_id, asset.storage_path, admin.id, targetId, "admin_support_accessory_delete");
