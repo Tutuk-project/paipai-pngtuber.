@@ -81,6 +81,22 @@ test("Admin account creation is a single database transaction", () => {
   assert.doesNotMatch(edge, /action === "admin_create_user"[\s\S]*?from\("vio_app_users"\)\.insert/);
 });
 
+
+test("collaboration preview and OBS overlay both render per-member accessories", () => {
+  const app = read("src/app.js");
+  const overlay = read("src/overlay.js");
+  assert.match(app, /entry\\.renderer\\.setAccessories\\(member\\.accessories \\|\\| \\[\\]\\)/);
+  assert.match(app, /roomPreviewRenderers\\.values\\(\\)[\\s\\S]*?renderer\\.stop/);
+  assert.match(overlay, /renderer\\.setAccessories\\(member\\.accessories \\|\\| \\[\\]\\)/);
+});
+
+test("accessory upload refreshes the active room snapshot", () => {
+  const app = read("src/app.js");
+  const upload = app.match(/async function uploadCharacterAccessories\\(files\\) \\{[\\s\\S]*?\\n\\}/)?.[0] || "";
+  assert.match(upload, /api\\("my_assets"\\)/);
+  assert.match(upload, /if \\(currentRoom\\) await loadRoomMembers\\(\\)/);
+});
+
 test("modular avatar renderer is wired into editor and OBS overlay", () => {
   const app = read("src/app.js");
   const overlay = read("src/overlay.js");
