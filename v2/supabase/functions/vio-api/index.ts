@@ -437,12 +437,79 @@ Deno.serve(async (req) => {
       for (const asset of uniqueAssets) {
         cleanupJobs.push(await enqueueStorageCleanup(db, asset.bucket_id, asset.storage_path, admin.id, targetId, "admin_user_deletion"));
       }
+      const cancelDeletionJobs = async (reason: string) => {
+        for (const job of cleanupJobs) await cancelStorageCleanup(db, job.id, reason);
+      };
       const { data: devices, error: devicesError } = await db.from("vio_user_devices").select("auth_user_id").eq("app_user_id", targetId);
       if (devicesError) {
-        for (const job of cleanupJobs) await cancelStorageCleanup(db, job.id, "device lookup failed before account deletion");
+        await cancelDeletionJobs("device lookup failed before account deletion");
         throw devicesError;
       }
-      await audit(db, admin.id, targetId, "user_deletion_started", { username: target.username, linked_devices: devices?.length || 0, storage_objects: cleanupJobs.length });
+
+      // Disable first. If any later Auth deletion fails partway through, every
+      // remaining device is denied by getIdentity() and vio_current_app_user_id().
+      const { error: disableError } = await db.from("vio_app_users").update({ is_active: false }).eq("id", targetId);
+      if (disableError) {
+        await cancelDeletionJobs("account could not be disabled before deletion");
+        throw disableError;
+      }
+      const { error: supportError } = await db.from("vio_support_sessions")
+        .update({ ended_at: new Date().toISOString() }).eq("target_user_id", targetId).is("ended_at", null);
+      if (supportError) {
+        await cancelDeletionJobs("support sessions could not be revoked before deletion");
+        throw supportError;
+      }
+
+      // Close rooms hosted by the account and remove its membership elsewhere.
+      // This also revokes overlay devices so a failed Auth cleanup cannot leave
+      // an active OBS renderer attached to a disabled account's room.
+      const { data: memberships, error: membershipsError } = await db.from("vio_room_members")
+        .select("room_id,is_host").eq("user_id", targetId);
+      if (membershipsError) {
+        await cancelDeletionJobs("room membership lookup failed before account deletion");
+        throw membershipsError;
+      }
+      for (const membership of memberships || []) {
+        const { error: tokenError } = await db.from("vio_rooms").update({ overlay_token_hash: null }).eq("id", membership.room_id);
+        if (tokenError) {
+          await cancelDeletionJobs("room overlay revocation failed before account deletion");
+          throw tokenError;
+        }
+        const { error: overlayError } = await db.from("vio_overlay_devices").delete().eq("room_id", membership.room_id);
+        if (overlayError) {
+          await cancelDeletionJobs("overlay device revocation failed before account deletion");
+          throw overlayError;
+        }
+        if (membership.is_host) {
+          const { error: roomError } = await db.from("vio_rooms").update({ status: "closed", closed_at: new Date().toISOString() }).eq("id", membership.room_id);
+          if (roomError) {
+            await cancelDeletionJobs("host room closure failed before account deletion");
+            throw roomError;
+          }
+          const { error: memberError } = await db.from("vio_room_members").delete().eq("room_id", membership.room_id);
+          if (memberError) {
+            await cancelDeletionJobs("host room membership cleanup failed before account deletion");
+            throw memberError;
+          }
+        } else {
+          const { error: memberError } = await db.from("vio_room_members").delete().eq("room_id", membership.room_id).eq("user_id", targetId);
+          if (memberError) {
+            await cancelDeletionJobs("room membership cleanup failed before account deletion");
+            throw memberError;
+          }
+        }
+      }
+
+      try {
+        await audit(db, admin.id, targetId, "user_deletion_started", {
+          username: target.username, linked_devices: devices?.length || 0,
+          storage_objects: cleanupJobs.length, account_disabled_before_revocation: true
+        });
+      } catch (auditError) {
+        await cancelDeletionJobs("deletion start audit failed; account remains disabled");
+        throw auditError;
+      }
+
       try {
         for (const device of devices || []) {
           const { error } = await db.auth.admin.deleteUser(device.auth_user_id);
@@ -451,7 +518,7 @@ Deno.serve(async (req) => {
         const { error } = await db.from("vio_app_users").delete().eq("id", targetId);
         if (error) throw error;
       } catch (deleteError) {
-        for (const job of cleanupJobs) await cancelStorageCleanup(db, job.id, "account deletion did not complete");
+        await cancelDeletionJobs("account deletion did not complete; account remains disabled");
         throw deleteError;
       }
       let cleanupPending = 0;
