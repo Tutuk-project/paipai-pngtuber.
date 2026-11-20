@@ -48,6 +48,16 @@ async function audit(db: SupabaseClient, actor: string | null, target: string | 
   }
 }
 
+async function auditWithWarning(db: SupabaseClient, actor: string | null, target: string | null, action: string, details: Json = {}) {
+  try {
+    await audit(db, actor, target, action, details);
+    return false;
+  } catch (error) {
+    console.error("Mutation completed but audit log write failed", { action, error });
+    return true;
+  }
+}
+
 async function enqueueStorageCleanup(db: SupabaseClient, bucketId: string, storagePath: string, requestedBy: string | null, targetUserId: string | null, reason: string) {
   const { data, error } = await db.from("vio_storage_cleanup_queue").upsert({
     bucket_id: bucketId,
@@ -861,8 +871,8 @@ Deno.serve(async (req) => {
         await db.from("vio_characters").delete().eq("id", character.id).eq("user_id", user.id);
         throw profileError;
       }
-      await audit(db, user.id, user.id, "character_draft_created", { character_id: character.id });
-      return json({ ok: true, character });
+      const auditWarning = await auditWithWarning(db, user.id, user.id, "character_draft_created", { character_id: character.id });
+      return json({ ok: true, character, audit_warning: auditWarning });
     }
 
     if (action === "save_character") {
@@ -879,8 +889,8 @@ Deno.serve(async (req) => {
       }).eq("id", characterId).eq("user_id", user.id)
         .select("id,name,is_saved").single();
       if (error) throw error;
-      await audit(db, user.id, user.id, "character_saved", { character_id: characterId });
-      return json({ ok: true, already_saved: false, character: updated });
+      const auditWarning = await auditWithWarning(db, user.id, user.id, "character_saved", { character_id: characterId });
+      return json({ ok: true, already_saved: false, character: updated, audit_warning: auditWarning });
     }
 
     if (action === "set_active_character") {
@@ -894,8 +904,8 @@ Deno.serve(async (req) => {
         user_id: user.id, active_character_id: characterId
       }, { onConflict: "user_id" });
       if (error) throw error;
-      await audit(db, user.id, user.id, "character_activated", { character_id: characterId });
-      return json({ ok: true, active_character_id: characterId });
+      const auditWarning = await auditWithWarning(db, user.id, user.id, "character_activated", { character_id: characterId });
+      return json({ ok: true, active_character_id: characterId, audit_warning: auditWarning });
     }
 
     if (action === "delete_character") {
@@ -943,10 +953,10 @@ Deno.serve(async (req) => {
           console.error("Character asset cleanup deferred", job.id, cleanupError);
         }
       }
-      await audit(db, user.id, user.id, "character_deleted", {
+      const auditWarning = await auditWithWarning(db, user.id, user.id, "character_deleted", {
         character_id: characterId, cleanup_jobs: jobs.length, cleanup_pending: cleanupPending
       });
-      return json({ ok: true, active_character_id: nextActiveId, cleanup_pending: cleanupPending });
+      return json({ ok: true, active_character_id: nextActiveId, cleanup_pending: cleanupPending, audit_warning: auditWarning });
     }
 
     if (action === "my_assets") {
@@ -1188,10 +1198,10 @@ Deno.serve(async (req) => {
         const cleanup = await processStorageCleanup(db, cleanupJob);
         if (!cleanup.ok) console.warn("Previous expression asset cleanup deferred", cleanupJob.id);
       }
-      await audit(db, user.id, user.id, "character_asset_uploaded", {
+      const auditWarning = await auditWithWarning(db, user.id, user.id, "character_asset_uploaded", {
         character_id: characterId, expression, size_bytes: size, mime_type: mime
       });
-      return json({ ok: true, character_id: characterId, expression });
+      return json({ ok: true, character_id: characterId, expression, audit_warning: auditWarning });
     }
 
     if (action === "record_accessory") {
@@ -1232,10 +1242,10 @@ Deno.serve(async (req) => {
         sort_order: Date.now()
       }).select("id").single();
       if (error) throw error;
-      await audit(db, user.id, user.id, "character_accessory_uploaded", {
+      const auditWarning = await auditWithWarning(db, user.id, user.id, "character_accessory_uploaded", {
         character_id: characterId, accessory_id: accessory.id, size_bytes: size, mime_type: mime
       });
-      return json({ ok: true, accessory_id: accessory.id, character_id: characterId });
+      return json({ ok: true, accessory_id: accessory.id, character_id: characterId, audit_warning: auditWarning });
     }
 
     if (action === "update_accessory") {
