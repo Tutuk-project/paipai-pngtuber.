@@ -400,3 +400,16 @@ test("Storage cleanup queue serializes pending deletion against new metadata ref
   assert.match(guard, /new\.preferences #>> '\{background,bucket_id\}'/i);
   assert.match(guard, /new\.preferences #>> '\{background,storage_path\}'/i);
 });
+
+test("room member and OBS overlay queries follow declared foreign-key paths through app users", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const expected = "vio_app_users!inner(username,profile:vio_profiles!inner(preferences,active_character_id),characters:vio_characters(";
+  assert.equal(edge.split(expected).length - 1, 2);
+  assert.ok(edge.includes("member.vio_app_users?.profile?.active_character_id"));
+  assert.ok(edge.includes("member.vio_app_users?.profile?.preferences"));
+  assert.ok(edge.includes("member.vio_app_users?.characters || []"));
+  assert.ok(edge.includes("if (membershipError) throw membershipError"));
+  assert.ok(edge.includes("if (memberError) throw memberError"));
+  assert.ok(edge.includes('typeof value.code === "string"'));
+  assert.ok(edge.includes('console.error("vio-api request failed"'));
+});
