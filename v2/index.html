@@ -51,7 +51,7 @@
       <section id="editorView" class="view" hidden>
         <section class="preview-card panel-card">
           <div class="card-heading"><div><p class="eyebrow">LIVE STAGE</p><h2>Avatar Preview</h2></div><div class="preview-actions"><span id="micStateBadge" class="status-pill status-neutral">Mic belum aktif</span><button id="obsLinkButton" class="button button-quiet" type="button">Generate OBS Link</button></div></div>
-          <div class="stage-frame"><canvas id="avatarCanvas" width="1280" height="720" aria-label="Avatar preview"></canvas><div id="emptyAvatar" class="empty-stage"><div class="empty-avatar-icon">✧</div><strong>Character preview</strong><span>Upload karakter PNG untuk memulai.</span></div></div>
+          <div class="stage-frame"><canvas id="avatarCanvas" width="1080" height="1920" aria-label="Avatar preview"></canvas><div id="emptyAvatar" class="empty-stage"><div class="empty-avatar-icon">✧</div><strong>Character preview</strong><span>Upload karakter PNG untuk memulai.</span></div></div>
           <div class="preview-footer"><div class="meter-wrap"><div class="meter-caption"><span>Microphone level</span><strong id="meterValue">0%</strong></div><div class="meter-track"><i id="meterBar"></i></div></div><span id="expressionState" class="expression-tag">IDLE</span></div>
         </section>
         <section id="settingsPanel" class="settings-panel panel-card"><div class="card-heading"><div><p class="eyebrow">WORKSPACE SETTINGS</p><h2 id="settingsTitle">Profile</h2></div></div><div id="settingsContent" class="settings-content"></div></section>
@@ -59,7 +59,7 @@
 
       <section id="collaborationView" class="view" hidden>
         <section class="room-toolbar panel-card"><div><p class="eyebrow">GO COLLABORATION</p><h2>Room <span id="roomCodeLabel" class="room-code">----</span></h2></div><div class="room-actions"><span id="roomMicStateBadge" class="status-pill status-neutral">Mic off</span><button id="copyRoomCode" class="button button-quiet" type="button">Copy code</button><button id="roomObsLink" class="button button-primary" type="button">OBS Link</button><button id="exitRoom" class="button button-danger" type="button" title="Exit room">↪ Exit</button></div></section>
-        <section class="collab-preview panel-card"><div class="card-heading"><div><p class="eyebrow">SHARED STAGE</p><h2>Live participants</h2></div><span id="participantCount" class="status-pill status-live">0 / 4 connected</span></div><div class="collab-stage-wrap"><canvas id="roomStage" width="1280" height="720" aria-label="Shared collaboration preview"></canvas><div id="participantNames" class="participant-names"><div class="participant-empty">Waiting for participants…</div></div></div></section>
+        <section class="collab-preview panel-card"><div class="card-heading"><div><p class="eyebrow">SHARED STAGE</p><h2>Live participants</h2></div><span id="participantCount" class="status-pill status-live">0 / 4 connected</span></div><div class="collab-stage-wrap"><canvas id="roomStage" width="1080" height="1920" aria-label="Shared collaboration preview"></canvas><div id="participantNames" class="participant-names"><div class="participant-empty">Waiting for participants…</div></div></div></section>
         <section class="settings-panel panel-card"><div class="card-heading"><div><p class="eyebrow">YOUR ROOM OVERRIDES</p><h2>Personal controls</h2></div></div><div id="roomControls" class="settings-content"></div></section>
       </section>
 
@@ -74,7 +74,7 @@
         <section class="panel-card admin-section"><div class="card-heading"><div><p class="eyebrow">SECURITY</p><h2>Audit log</h2></div></div><div id="adminAuditLog" class="table-wrap"><p class="muted">Administrative actions will be audited by the backend.</p></div></section>
       </section>
 
-      <section id="overlayView" class="overlay-view" hidden><canvas id="overlayCanvas" width="1280" height="720"></canvas><p id="overlayStatus" class="overlay-status"></p></section>
+      <section id="overlayView" class="overlay-view" hidden><canvas id="overlayCanvas" width="1080" height="1920"></canvas><p id="overlayStatus" class="overlay-status"></p></section>
 
       <footer class="workspace-footer"><span>Vio Studio · v2.0 development build</span><span id="footerSession">Not authenticated</span></footer>
     </main>
