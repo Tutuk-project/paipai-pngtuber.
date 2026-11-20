@@ -390,13 +390,13 @@ test("Storage cleanup retry refuses to remove still-referenced assets", () => {
 test("Storage cleanup queue serializes pending deletion against new metadata references", () => {
   const guard = read("supabase/migrations/006_vio_storage_cleanup_reference_guard.sql");
   assert.match(guard, /pg_advisory_xact_lock/i);
-  assert.match(guard, /create trigger vio_storage_cleanup_queue_key_lock[\\s\\S]*?on public\\.vio_storage_cleanup_queue/i);
-  assert.match(guard, /q\\.processed_at is null/i);
+  assert.match(guard, /create trigger vio_storage_cleanup_queue_key_lock[\s\S]*?on public\.vio_storage_cleanup_queue/i);
+  assert.match(guard, /q\.processed_at is null/i);
   assert.match(guard, /vio_character_assets_cleanup_reference_guard/i);
   assert.match(guard, /vio_character_accessories_cleanup_reference_guard/i);
   assert.match(guard, /vio_profiles_background_cleanup_reference_guard/i);
   assert.match(guard, /Storage object is reserved for cleanup/i);
-  assert.match(guard, /security definer[\\s\\S]*?set search_path = public, pg_temp/i);
-  assert.match(guard, /new\\.preferences #>> '\\{background,bucket_id\\}'/i);
-  assert.match(guard, /new\\.preferences #>> '\\{background,storage_path\\}'/i);
+  assert.match(guard, /security definer[\s\S]*?set search_path = public, pg_temp/i);
+  assert.match(guard, /new\.preferences #>> '\{background,bucket_id\}'/i);
+  assert.match(guard, /new\.preferences #>> '\{background,storage_path\}'/i);
 });
