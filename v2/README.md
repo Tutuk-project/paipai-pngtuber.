@@ -98,7 +98,7 @@ A modular `src/avatar-renderer.js` is wired into the v2 editor and OBS overlay. 
 
 ## 2026-11-20 Vio-Studio v2.0 checkpoints and CI
 
-- Latest checkpoint: `docs/CHECKPOINT-38-2026-11-20.md`.
+- Latest checkpoint: `docs/CHECKPOINT-43-2026-11-21.md`.
 - Previous checkpoints: `docs/CHECKPOINT-17-2026-11-20.md`, `docs/CHECKPOINT-16-2026-11-20.md`, and `docs/CHECKPOINT-15-2026-11-20.md`.
 - Previous checkpoints: `docs/CHECKPOINT-10-2026-11-20.md`, `docs/CHECKPOINT-09-2026-11-20.md`, and `docs/CHECKPOINT-08-2026-11-20.md`.
 - GitHub Actions workflow: `.github/workflows/vio-v2-ci.yml`.
@@ -106,3 +106,14 @@ A modular `src/avatar-renderer.js` is wired into the v2 editor and OBS overlay. 
 - Checkpoint 35 verified run: `44748939403`, 58 tests passed, 0 failed, 0 skipped; PostgreSQL 16 concurrency suite passed 4/4 scenarios.
 - Coverage includes security policy checks, expired-room Realtime checks, Admin bootstrap, accessory lifecycle/transforms/direct drag, collaboration animation, private background media validation/signed delivery, portrait/custom output dimensions, host-selected room resolution, mobile pixel-budget validation, and live asset-update broadcast wiring.
 - Migrations 001–008 and Edge Function `vio-api` v1 are deployed to the isolated Supabase Development project `vio-studio-v2-dev` (`nbpqnwjxavuhpiuntcep`). JWT verification is enabled. Supabase Live remains untouched.
+
+## 2026-11-21 Collaboration and OBS hotfix
+
+- Root cause confirmed from Supabase logs: PostgREST error `PGRST200` on room-member queries. The code attempted to embed `vio_profiles` and `vio_characters` directly from `vio_room_members`, although both relationships are reachable through `vio_app_users`.
+- Corrected both `room_members` and `overlay_connect` to embed profile and character relations through `vio_app_users` using the declared foreign keys.
+- Added explicit handling for membership-query errors and structured PostgREST error serialization/logging instead of returning `[object Object]`.
+- Deployed the corrected `vio-api` Edge Function to the isolated Development project only: version 11, `verify_jwt=true`.
+- Updated the preview repository's OBS overlay error display to surface backend response details.
+- GitHub development commits: `f2d7e393e26d41339effe0fcc858959d0bf449c3` (Edge Function), `a5b881ebf47423ff6b269d4a970dadb43c539f8b` (OBS diagnostics), `8176d9cb81e5ab4a1d7fc0f23f0c4b253d0c8b21` (regression test).
+- Preview commits: `8c7c008056a54141a7fd652f8d81f8a5f34580ce` (OBS diagnostics), `1e07ea967811c4c8df701f9e543759cf284b04eb` (Edge Function source sync).
+- Runtime re-test of room participants and generated OBS link is still pending user confirmation. No production Pages, Supabase Live, Offline v1.7 or Online v1.0 deployment was changed.
