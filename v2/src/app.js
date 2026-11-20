@@ -33,6 +33,10 @@ let renderFrame = 0;
 let playerSequence = 0;
 let layoutSequence = 0;
 let activeSupportSession = null;
+let micEnabled = false;
+let generatedOverlayUrl = "";
+let overlayGenerationBusy = false;
+let toastTimer = 0;
 const remotePlayerStates = new Map();
 const remotePlayerSequences = new Map();
 const remoteLayoutSequences = new Map();
@@ -483,7 +487,7 @@ function renderSettings(menuId) {
 
   if (menuId === "obs") {
     content.append(Object.assign(document.createElement("p"), { className: "muted", textContent: "OBS memakai output renderer terpisah. Browser Source tidak meminta mikrofon; editor perangkat mengolah mic lalu mengirim state ke room/overlay." }));
-    content.append(actionButton("Generate OBS Link", generateOverlayLink, true));
+    content.append(createOverlayGeneratorButton());
     return;
   }
 
@@ -572,6 +576,8 @@ async function login(username, pairingCode) {
   currentUser = identity.user;
   $("pairingInput").value = "";
   $("pairingWrap").hidden = true;
+  // Start capture right after the user completes login; browser permission is still required.
+  await startMicrophone({ silent: true });
   await loadCurrentProfile();
   try {
     const assets = await api("my_assets");
@@ -675,7 +681,71 @@ async function refreshAudioDevices() {
   }
 }
 
-async function startMicrophone() {
+function updateMicToggleButtons() {
+  const text = micEnabled ? "Mic ON" : "Mic OFF";
+  for (const id of ["micToggleButton", "roomMicToggleButton"]) {
+    const button = $(id);
+    if (!button) continue;
+    button.textContent = text;
+    button.classList.toggle("is-mic-on", micEnabled);
+    button.setAttribute("aria-pressed", String(micEnabled));
+  }
+}
+
+function showToast(message, type = "success") {
+  let toast = $("appToast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.id = "appToast";
+    toast.className = "app-toast";
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
+    document.body.append(toast);
+  }
+  toast.textContent = message;
+  toast.dataset.type = type;
+  toast.classList.add("is-visible");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove("is-visible"), 2600);
+}
+
+async function copyText(text) {
+  if (!text) throw new Error("Link belum tersedia.");
+  if (navigator.clipboard?.writeText && window.isSecureContext) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+  const field = document.createElement("textarea");
+  field.value = text;
+  field.setAttribute("readonly", "");
+  field.style.position = "fixed";
+  field.style.opacity = "0";
+  document.body.append(field);
+  field.select();
+  const copied = document.execCommand("copy");
+  field.remove();
+  if (!copied) throw new Error("Browser tidak mengizinkan penyalinan otomatis.");
+}
+
+function syncOverlayGeneratorButtons(label, loading = false, mode = "generate") {
+  const buttons = [$("obsLinkButton"), $("roomObsLink"), ...document.querySelectorAll("[data-overlay-generator]")].filter(Boolean);
+  for (const button of buttons) {
+    button.textContent = label;
+    button.disabled = loading;
+    button.classList.toggle("is-loading", loading);
+    button.dataset.mode = mode;
+  }
+}
+
+function createOverlayGeneratorButton() {
+  const button = actionButton(generatedOverlayUrl ? "Salin Link" : "Generate OBS Link", () => generateOverlayLink(button), true);
+  button.dataset.overlayGenerator = "true";
+  button.dataset.mode = generatedOverlayUrl ? "copy" : "generate";
+  return button;
+}
+
+async function startMicrophone(options = {}) {
+  const silent = options.silent === true;
   try {
     if (!audio) {
       audio = new AudioEngine({ deviceId: roomOverrides.deviceId, sensitivity: roomOverrides.sensitivity, boostDb: roomOverrides.boostDb });
@@ -686,6 +756,8 @@ async function startMicrophone() {
       });
       audio.addEventListener("status", event => {
         const { status, error } = event.detail;
+        micEnabled = status === "active" || status === "requesting" || status === "device-fallback";
+        updateMicToggleButtons();
         $("micStateBadge").textContent = status === "active" ? "Mic active" : `Mic ${status}`;
         const roomBadge = $("roomMicStateBadge");
         if (roomBadge) {
@@ -707,15 +779,22 @@ async function startMicrophone() {
       });
     }
     await audio.start();
+    micEnabled = true;
+    updateMicToggleButtons();
+    $("micStateBadge").textContent = "Mic active";
     await refreshAudioDevices();
   } catch (error) {
+    micEnabled = false;
+    updateMicToggleButtons();
     $("micStateBadge").textContent = "Mic error";
-    alert(`Gagal mengaktifkan mikrofon: ${error.message}`);
+    showToast(`Mic belum bisa aktif: ${error.message}`, "error");
   }
 }
 
 async function stopMicrophone() {
   await audio?.stop();
+  micEnabled = false;
+  updateMicToggleButtons();
   $("micStateBadge").textContent = "Mic stopped";
   currentMicState = "idle";
   $("expressionState").textContent = "IDLE";
@@ -879,7 +958,7 @@ function drawPreview() {
   const height = Math.max(320, Math.min(3840, Math.round(Number(profilePreferences.outputHeight) || 1920)));
   if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
   const stageFrame = canvas.closest(".stage-frame");
-  if (stageFrame) stageFrame.style.aspectRatio = `${width} / ${height}`;
+  if (stageFrame) stageFrame.style.aspectRatio = "4 / 3";
   const roomStage = $("roomStage");
   if (roomStage && (roomStage.width !== width || roomStage.height !== height)) {
     roomStage.width = width; roomStage.height = height; roomStage.style.aspectRatio = `${width} / ${height}`;
@@ -1280,12 +1359,44 @@ async function leaveRoom(restoreView = true) {
   if (restoreView && currentUser) selectMenu("profile");
 }
 
-async function generateOverlayLink() {
+async function generateOverlayLink(button = null) {
+  const sourceButton = button || $("obsLinkButton") || $("roomObsLink");
+  if (overlayGenerationBusy) return;
+  if (generatedOverlayUrl) {
+    try {
+      if (sourceButton) { sourceButton.disabled = true; sourceButton.textContent = "Menyalin…"; }
+      await copyText(generatedOverlayUrl);
+      showToast("Berhasil disalin");
+    } catch (error) {
+      showToast(`Gagal menyalin link: ${error.message}`, "error");
+    } finally {
+      syncOverlayGeneratorButtons("Salin Link", false, "copy");
+    }
+    return;
+  }
+
+  overlayGenerationBusy = true;
+  syncOverlayGeneratorButtons("Membuat link…", true, "generate");
   try {
     let room = currentRoom;
     if (!room) {
-      const created = await api("create_room", { capacity: 1, purpose: "personal_overlay" });
-      room = created.room;
+      // Reuse an active room first; this handles stale in-memory state after refresh.
+      const active = await api("get_my_active_room");
+      room = active.room || null;
+    }
+    if (!room) {
+      try {
+        const created = await api("create_room", { capacity: 1, purpose: "personal_overlay" });
+        room = created.room;
+      } catch (error) {
+        if (!String(error?.message || error).includes("ALREADY_IN_ROOM")) throw error;
+        const active = await api("get_my_active_room");
+        room = active.room || null;
+        if (!room) throw new Error("Akun masih tercatat berada di room aktif. Keluar dari room tersebut, lalu coba lagi.");
+      }
+    }
+    if (!room?.id) throw new Error("Room aktif tidak ditemukan.");
+    if (!currentRoom) {
       currentRoom = room;
       profilePreferences.lastRoomId = room.id;
       await api("profile_save", { display_name: currentUser.display_name || currentUser.username, preferences: profilePreferences });
@@ -1295,9 +1406,15 @@ async function generateOverlayLink() {
     const result = await api("issue_room_overlay", { room_id: room.id });
     const url = new URL("./overlay.html", window.location.href);
     url.hash = new URLSearchParams({ room: result.room_id, token: result.overlay_token }).toString();
-    await navigator.clipboard.writeText(url.toString());
-    alert(`OBS Link berhasil disalin:\n${url.toString()}`);
-  } catch (error) { alert(`OBS Link belum bisa dibuat: ${error.message}`); }
+    generatedOverlayUrl = url.toString();
+    syncOverlayGeneratorButtons("Salin Link", false, "copy");
+    showToast("Link berhasil dibuat");
+  } catch (error) {
+    syncOverlayGeneratorButtons("Generate OBS Link", false, "generate");
+    showToast(`OBS Link belum bisa dibuat: ${error.message}`, "error");
+  } finally {
+    overlayGenerationBusy = false;
+  }
 }
 
 async function loadAdminOverview() {
@@ -1450,7 +1567,10 @@ async function startAdminSupportView(userId) {
 function setupEvents() {
   $("sidebarToggle").addEventListener("click", () => {
     const side = $("sidebar"); side.classList.toggle("is-collapsed");
-    $("sidebarToggle").title = side.classList.contains("is-collapsed") ? "Expand sidebar" : "Collapse sidebar";
+    const collapsed = side.classList.contains("is-collapsed");
+    $("sidebarToggle").textContent = collapsed ? "›" : "‹";
+    $("sidebarToggle").title = collapsed ? "Expand sidebar" : "Collapse sidebar";
+    $("sidebarToggle").setAttribute("aria-label", $("sidebarToggle").title);
   });
   $("usernameInput").addEventListener("input", () => {
     const isRootAdmin = $("usernameInput").value.trim().toLowerCase() === "paipai77";
@@ -1478,8 +1598,11 @@ function setupEvents() {
   $("topRoomButton").addEventListener("click", openRoomChooser);
   $("exitRoom").addEventListener("click", () => leaveRoom(true));
   $("copyRoomCode").addEventListener("click", async () => { if (currentRoom) await navigator.clipboard.writeText(currentRoom.room_code); });
-  $("obsLinkButton").addEventListener("click", generateOverlayLink);
-  $("roomObsLink").addEventListener("click", generateOverlayLink);
+  $("obsLinkButton").addEventListener("click", () => generateOverlayLink($("obsLinkButton")));
+  $("roomObsLink").addEventListener("click", () => generateOverlayLink($("roomObsLink")));
+  $("micToggleButton").addEventListener("click", () => micEnabled ? stopMicrophone() : startMicrophone());
+  $("roomMicToggleButton").addEventListener("click", () => micEnabled ? stopMicrophone() : startMicrophone());
+  updateMicToggleButtons();
   $("createUserButton").addEventListener("click", createUser);
   $("refreshRoomsButton").addEventListener("click", loadAdminOverview);
 }
