@@ -93,6 +93,9 @@ test("effect preferences are normalized, clamped and backward compatible", () =>
   assert.equal(effects.filter.filter.hue, 180);
   assert.equal(effects.filter.filter.saturation, 0);
   assert.equal(effects.filter.filter.brightness, 125);
+  const all = normalizeEffects({ filter: { enabled: true, states: ["all"], targets: ["all"] } });
+  assert.deepEqual(all.filter.states, ["idle", "talking", "blink", "talking_blink"]);
+  assert.deepEqual(all.filter.targets, ["avatar", "accessories"]);
 });
 
 test("legacy effects are filtered by state, target and global switches", () => {
