@@ -46,7 +46,8 @@ jobs:
           test -f "$source_dir/supabase/functions/vio-api/index.ts"
           mkdir -p v2
           cp -a "$source_dir/." v2/
-          bash v2/tests/check-syntax.sh
+          cd v2
+          bash tests/check-syntax.sh
           rm "$archive"
           echo "Imported $(find v2 -type f | wc -l) files into /v2"
 
