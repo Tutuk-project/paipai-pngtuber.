@@ -256,6 +256,18 @@ test("Admin support view lists and safely deletes uploaded background media", ()
   assert.ok(app.includes("Asset reference removed, but Storage cleanup is still pending"));
 });
 
+test("Admin support profile edits cannot bypass background cleanup tracking", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const app = read("src/app.js");
+  const update = edge.slice(edge.indexOf('if (action === "admin_update_profile")'), edge.indexOf('if (action === "admin_delete_asset")'));
+  assert.ok(update.includes("Support View cannot replace background files."));
+  assert.ok(update.includes('"admin_support_profile_background_clear"'));
+  assert.ok(update.includes("Admin profile update failed"));
+  assert.ok(update.includes("processStorageCleanup(db, backgroundCleanupJob)"));
+  assert.ok(update.includes("cleanup_pending: cleanupPending"));
+  assert.ok(app.includes("File background lama masih menunggu penghapusan Storage"));
+});
+
 test("portrait and custom output resolutions are shared by editor, room and OBS", () => {
   const app = read("src/app.js");
   const overlay = read("src/overlay.js");
