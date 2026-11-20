@@ -94,9 +94,10 @@ These are local source changes only. The migration and Edge Function have **not*
 
 A modular `src/avatar-renderer.js` is wired into the v2 editor and OBS overlay. It supports expression/blink selection, scale, mirror, bounce, sway, breathing, transparent/solid/gradient backgrounds, and basic glow/shadow/stroke/filter/distortion effects. Character accessories now have a separate private metadata table, PNG/WebP upload, per-item position and size controls, mirror/follow/effects toggles, and signed asset delivery to collaboration and OBS snapshots. This remains partial v1.0 parity: direct drag positioning, background image/video import, custom resolution controls, full per-accessory effect tuning, and device/OBS visual regression remain outstanding.
 
-## 2026-11-20 GitHub security and accessory CI
+## 2026-11-20 GitHub security, accessory, and collaboration preview CI
 
+- Latest checkpoint: `docs/CHECKPOINT-07-2026-11-20.md`.
 - GitHub Actions workflow: `.github/workflows/vio-v2-ci.yml`.
-- Latest verified run at this checkpoint: 20 tests passed, 0 failed, 0 skipped.
-- Regression coverage includes security policy checks, expired-room Realtime checks, single-Admin bootstrap, overlay expiry, and accessory cloud lifecycle/render wiring.
-- Migrations 002 and 003 and the Edge Function updates remain development source only; they have not been applied/deployed to live Supabase.
+- Latest verified run: `44734942102`, 28 tests passed, 0 failed, 0 skipped.
+- Regression coverage includes security policy checks, expired-room Realtime checks, serialized Admin bootstrap, overlay expiry, accessory cloud lifecycle, renderer transforms/effects, collaboration preview accessory wiring, animation-frame compositing, and upload refresh.
+- Migrations 001–003 and the Edge Function updates remain development source only; they have not been applied/deployed to live Supabase.
