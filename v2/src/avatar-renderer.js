@@ -16,6 +16,35 @@ const DEFAULTS = {
   effects: { enabled: false, stickerEffectsEnabled: true, ...structuredClone(EFFECT_DEFAULTS) }
 };
 
+export function fisheyeWarpPixels(source, width, height, intensity) {
+  const output = new Uint8ClampedArray(source.length);
+  const cx = (width - 1) / 2;
+  const cy = (height - 1) / 2;
+  const norm = Math.max(cx, cy) || 1;
+  const k = 0.34 * (Math.max(0, Math.min(100, Number(intensity) || 0)) / 100);
+  for (let y = 0; y < height; y++) {
+    const ny = (y - cy) / norm;
+    for (let x = 0; x < width; x++) {
+      const nx = (x - cx) / norm;
+      const radius = Math.sqrt(nx * nx + ny * ny);
+      const destination = (y * width + x) * 4;
+      if (radius < 1e-6) {
+        output.set(source.subarray(destination, destination + 4), destination);
+        continue;
+      }
+      const mapped = radius * (1 - k * (1 - radius * radius));
+      const scale = mapped / radius;
+      const sx = Math.round(cx + nx * scale * norm);
+      const sy = Math.round(cy + ny * scale * norm);
+      if (sx >= 0 && sx < width && sy >= 0 && sy < height) {
+        const origin = (sy * width + sx) * 4;
+        output.set(source.subarray(origin, origin + 4), destination);
+      }
+    }
+  }
+  return output;
+}
+
 function normalizeEffects(input = {}) {
   const source = { ...(input || {}) };
   if (source.glow && !source.bloom) source.bloom = source.glow;
@@ -63,6 +92,7 @@ export class AvatarRenderer {
     if (this.images.has(src)) return this.images.get(src);
     const image = new Image();
     image.decoding = "async";
+    image.crossOrigin = "anonymous";
     image.onload = () => this.drawOnce();
     image.onerror = () => this.images.set(src, null);
     image.src = src;
@@ -290,7 +320,27 @@ export class AvatarRenderer {
     ctx.filter = this.effectFilter(ids);
     ctx.drawImage(image, pad, pad, width, height);
     ctx.restore();
-    const result = { canvas, pad, width, height };
+    let outputCanvas = canvas;
+    let eagleWarp = false;
+    if (ids.includes("eagle") && !sprite.eagleWarp) {
+      try {
+        const sourceContext = canvas.getContext("2d", { willReadFrequently: true });
+        const sourcePixels = sourceContext.getImageData(0, 0, canvas.width, canvas.height);
+        const warpedPixels = fisheyeWarpPixels(sourcePixels.data, canvas.width, canvas.height, effects.eagle.intensity);
+        const warpedCanvas = document.createElement("canvas");
+        warpedCanvas.width = canvas.width;
+        warpedCanvas.height = canvas.height;
+        const warpedContext = warpedCanvas.getContext("2d");
+        const outputPixels = warpedContext.createImageData(warpedCanvas.width, warpedCanvas.height);
+        outputPixels.data.set(warpedPixels);
+        warpedContext.putImageData(outputPixels, 0, 0);
+        outputCanvas = warpedCanvas;
+        eagleWarp = true;
+      } catch (error) {
+        console.warn("Eagle Eye pixel warp unavailable; using safe lens fallback.", error);
+      }
+    }
+    const result = { canvas: outputCanvas, pad, width, height, eagleWarp };
     cache.set(signature, result);
     if (cache.size > 12) cache.delete(cache.keys().next().value);
     return result;
