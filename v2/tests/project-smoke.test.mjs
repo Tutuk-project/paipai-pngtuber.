@@ -122,6 +122,27 @@ test("live profile and asset updates refresh collaboration members and OBS snaps
   assert.ok(overlay.includes("setInterval(() => refreshMembers()"));
 });
 
+test("accessory metadata registration verifies the real storage object", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const record = edge.slice(edge.indexOf('if (action === "record_accessory")'), edge.indexOf('if (action === "update_accessory")'));
+  assert.ok(record.includes('.storage.from("vio-studio-assets").list(folderPath'));
+  assert.ok(record.includes('file.name === fileName'));
+  assert.ok(record.includes("storedSize !== size"));
+  assert.ok(record.includes("storedMime !== mime"));
+  assert.ok(record.includes("Uploaded accessory object was not found in storage."));
+});
+
+test("failed accessory metadata registration removes the uploaded orphan", () => {
+  const app = read("src/app.js");
+  const uploadStart = app.indexOf("async function uploadCharacterAccessories(files)");
+  const uploadEnd = app.indexOf("\nfunction renderAccessorySettingsList()", uploadStart);
+  const upload = app.slice(uploadStart, uploadEnd);
+  assert.ok(upload.includes("let metadataRecorded = false"));
+  assert.ok(upload.includes('await api("record_accessory"'));
+  assert.ok(upload.includes("if (storagePath && !metadataRecorded)"));
+  assert.ok(upload.includes('.storage.from("vio-studio-assets").remove([storagePath])'));
+});
+
 test("accessories can be selected and dragged directly on the avatar canvas", () => {
   const app = read("src/app.js");
   assert.ok(app.includes("function bindAccessoryCanvasDrag(canvas)"));
