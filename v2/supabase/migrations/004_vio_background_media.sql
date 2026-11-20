@@ -5,7 +5,7 @@ values(
   'vio-backgrounds',
   false,
   52428800,
-  array['image/png','image/webp','image/gif','video/mp4','video/webm']
+  array['image/png','image/jpeg','image/webp','image/gif','video/mp4','video/webm']
 )
 on conflict(id) do update
 set file_size_limit = excluded.file_size_limit,
