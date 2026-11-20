@@ -130,7 +130,7 @@ try {
   const errors = [];
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
-  await page.goto(`http://127.0.0.1:${address.port}/test.html`);
+  await page.goto(`http://127.0.0.1:${address.port}/test.html`, { waitUntil: "domcontentloaded", timeout: 15000 });
   await page.waitForFunction(() => Boolean(window.__vioVisual), { timeout: 15000 });
   const result = await page.evaluate(() => window.__vioVisual);
   assert.deepEqual(errors, [], `Browser renderer errors: ${errors.join("; ")}`);
