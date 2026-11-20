@@ -31,6 +31,23 @@ export function averageVisibleColor(pixels, fallback = "#ffd7b8") {
     : fallback;
 }
 
+export function sampleDominantColor(image, fallback = "#ffd7b8") {
+  if (typeof document === "undefined") return fallback;
+  try {
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    const scale = Math.min(1, 72 / Math.max(width, height));
+    const sampleCanvas = document.createElement("canvas");
+    sampleCanvas.width = Math.max(1, Math.round(width * scale));
+    sampleCanvas.height = Math.max(1, Math.round(height * scale));
+    const sampleContext = sampleCanvas.getContext("2d", { willReadFrequently: true });
+    sampleContext.drawImage(image, 0, 0, sampleCanvas.width, sampleCanvas.height);
+    return averageVisibleColor(sampleContext.getImageData(0, 0, sampleCanvas.width, sampleCanvas.height).data, fallback);
+  } catch {
+    return fallback;
+  }
+}
+
 export function fisheyeWarpPixels(source, width, height, intensity) {
   const output = new Uint8ClampedArray(source.length);
   const cx = (width - 1) / 2;
@@ -314,35 +331,31 @@ export class AvatarRenderer {
   }
 
   effectSprite(image, ids) {
-    if (!ids.length || typeof document === "undefined") return { canvas: image, pad: 0, width: image.naturalWidth || image.width, height: image.naturalHeight || image.height };
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    if (!ids.length || typeof document === "undefined") return { canvas: image, pad: 0, width, height, eagleWarp: false };
     if (!this.effectCache) this.effectCache = new WeakMap();
     const effects = this.preferences.effects;
     const signature = ids.map(key => `${key}:${JSON.stringify(effects[key])}`).join("|");
     let cache = this.effectCache.get(image);
     if (!cache) { cache = new Map(); this.effectCache.set(image, cache); }
     if (cache.has(signature)) return cache.get(signature);
-    const width = image.naturalWidth || image.width;
-    const height = image.naturalHeight || image.height;
     const stroke = ids.includes("stroke") ? effects.stroke : null;
-    const pad = stroke ? Math.max(2, Math.min(32, Number(stroke.thickness) || 8)) : 0;
+    const strokeThickness = stroke ? Math.max(1, Math.min(32, Number(stroke.thickness) || 8)) : 0;
+    const pad = Math.max(Math.ceil(Math.max(width, height) * 0.12), strokeThickness);
     const canvas = document.createElement("canvas");
     canvas.width = width + pad * 2;
     canvas.height = height + pad * 2;
     const ctx = canvas.getContext("2d");
-    const shadow = ids.includes("shadow") ? effects.shadow : null;
     const bloom = ids.includes("bloom") ? (effects.bloom || effects.glow) : null;
-    if (shadow) {
-      ctx.save();
-      ctx.shadowColor = shadow.color || "#101010";
-      ctx.shadowBlur = Math.max(0, Number(shadow.intensity) || 0) * 0.28;
-      ctx.shadowOffsetY = Math.max(0, Number(shadow.intensity) || 0) * 0.1;
-      ctx.drawImage(image, pad, pad, width, height);
-      ctx.restore();
-    }
+    const shadow = ids.includes("shadow") ? effects.shadow : null;
+
     if (bloom) {
+      const tint = sampleDominantColor(image, bloom.color || "#ffd7b8");
+      const rgba = tint.startsWith("rgb(") ? tint.replace("rgb(", "rgba(").replace(")", ",0.65)") : tint;
       ctx.save();
       ctx.globalCompositeOperation = "screen";
-      ctx.shadowColor = bloom.color || "#ffd7b8";
+      ctx.shadowColor = tint;
       ctx.shadowBlur = 12 + Math.max(0, Number(bloom.intensity) || 0) * 0.5;
       ctx.globalAlpha = 0.8;
       ctx.drawImage(image, pad, pad, width, height);
@@ -350,14 +363,6 @@ export class AvatarRenderer {
       ctx.drawImage(image, pad, pad, width, height);
       ctx.restore();
 
-      let tint = bloom.color || "#ffd7b8";
-      try {
-        const pixels = ctx.getImageData(pad, pad, width, height).data;
-        tint = averageVisibleColor(pixels, tint);
-      } catch (error) {
-        console.warn("Bloom color sampling unavailable; using configured tint.", error);
-      }
-      const rgba = tint.startsWith("rgb(") ? tint.replace("rgb(", "rgba(").replace(")", ",0.65)") : tint;
       const intensity = Math.max(0, Math.min(100, Number(bloom.intensity) || 0)) / 100;
       ctx.save();
       ctx.globalCompositeOperation = "screen";
@@ -381,6 +386,16 @@ export class AvatarRenderer {
       }
       ctx.restore();
     }
+
+    if (shadow) {
+      ctx.save();
+      ctx.shadowColor = shadow.color || "#101010";
+      ctx.shadowBlur = Math.max(0, Number(shadow.intensity) || 0) * 0.28;
+      ctx.shadowOffsetY = Math.max(0, Number(shadow.intensity) || 0) * 0.1;
+      ctx.drawImage(image, pad, pad, width, height);
+      ctx.restore();
+    }
+
     if (stroke) {
       const mask = document.createElement("canvas");
       mask.width = canvas.width; mask.height = canvas.height;
@@ -391,24 +406,25 @@ export class AvatarRenderer {
       maskCtx.fillRect(0, 0, mask.width, mask.height);
       ctx.save();
       if (!stroke.invert) {
-        const thickness = pad;
         for (let angle = 0; angle < 8; angle++) {
           const rad = angle * Math.PI / 4;
-          ctx.drawImage(mask, Math.cos(rad) * thickness, Math.sin(rad) * thickness);
+          ctx.drawImage(mask, Math.cos(rad) * strokeThickness, Math.sin(rad) * strokeThickness);
         }
       } else {
         ctx.drawImage(image, pad, pad, width, height);
         ctx.globalCompositeOperation = "source-atop";
         ctx.strokeStyle = stroke.color || "#ffffff";
-        ctx.lineWidth = pad;
+        ctx.lineWidth = strokeThickness;
         ctx.strokeRect(pad, pad, width, height);
       }
       ctx.restore();
     }
+
     ctx.save();
     ctx.filter = this.effectFilter(ids);
     ctx.drawImage(image, pad, pad, width, height);
     ctx.restore();
+
     let outputCanvas = canvas;
     let eagleWarp = false;
     if (ids.includes("eagle")) {
