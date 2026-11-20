@@ -41,7 +41,11 @@ function ensurePlayerRenderer(member, slotWidth) {
   renderer.setAssets(member.assets || {});
   renderer.setAccessories(member.accessories || []);
   const overrides = member.overrides || {};
-  const preferences = { ...(member.preferences || {}), scale: overrides.scale ?? member.preferences?.scale ?? 1 };
+  const preferences = {
+    ...(member.preferences || {}),
+    scale: overrides.scale ?? member.preferences?.scale ?? 1,
+    avatarScalePercent: overrides.scale != null ? undefined : member.preferences?.avatarScalePercent
+  };
   preferences.offsetX = Math.max(-100, Math.min(100, Number(overrides.x) || 0)) * width * 0.004;
   preferences.offsetY = Math.max(-100, Math.min(100, Number(overrides.y) || 0)) * canvas.height * 0.0035;
   renderer.setPreferences(preferences);
@@ -121,7 +125,11 @@ async function boot() {
         if (seq && seq <= (layoutSequences.get(payload.user_id) || 0)) return;
         if (seq) layoutSequences.set(payload.user_id, seq);
         const member = members.find(item => item.user_id === payload.user_id);
-        if (member) member.overrides = { ...(member.overrides || {}), ...payload.overrides };
+        if (member) {
+          member.overrides = { ...(member.overrides || {}), ...payload.overrides };
+          const slotWidth = canvas.width / Math.max(1, Math.min(4, members.length));
+          ensurePlayerRenderer(member, slotWidth);
+        }
         render();
       })
       .on("broadcast", { event: "member-assets-updated" }, () => {
