@@ -240,6 +240,22 @@ test("visual effects UI exposes all seven legacy effects with per-state and per-
   assert.ok(renderer.includes('ids.includes("shake")'));
 });
 
+test("Admin support view lists and safely deletes uploaded background media", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const app = read("src/app.js");
+  const detail = edge.slice(edge.indexOf('if (action === "admin_user_detail")'), edge.indexOf('if (action === "admin_impersonation_end")'));
+  const deletion = edge.slice(edge.indexOf('if (action === "admin_delete_asset")'), edge.indexOf('if (action === "my_assets")'));
+  assert.ok(detail.includes("backgroundAssets.push"));
+  assert.ok(detail.includes('createSignedUrl(background.storage_path, 900)'));
+  assert.ok(detail.includes('asset_type: "background"'));
+  assert.ok(deletion.includes('"admin_support_background_delete"'));
+  assert.ok(deletion.includes("Background asset no longer matches the active profile."));
+  assert.ok(deletion.includes("Admin background profile update failed"));
+  assert.ok(deletion.includes("cleanup_pending: cleanupPending"));
+  assert.ok(app.includes("asset.name || asset.expression || asset.asset_type"));
+  assert.ok(app.includes("Asset reference removed, but Storage cleanup is still pending"));
+});
+
 test("portrait and custom output resolutions are shared by editor, room and OBS", () => {
   const app = read("src/app.js");
   const overlay = read("src/overlay.js");
