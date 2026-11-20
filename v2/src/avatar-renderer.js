@@ -207,9 +207,10 @@ export class AvatarRenderer {
 
   activeEffects(state, target, item = null) {
     const effects = this.preferences.effects || {};
-    if (!effects.enabled || (target === "accessories" && (!effects.stickerEffectsEnabled || item?.effectsEnabled === false))) return [];
+    const globalEnabled = effects.enabled ?? EFFECT_KEYS.some(key => effects[key]?.enabled || (key === "bloom" && effects.glow?.enabled));
+    if (!globalEnabled || (target === "accessories" && (effects.stickerEffectsEnabled === false || item?.effectsEnabled === false))) return [];
     return EFFECT_KEYS.filter(key => {
-      const effect = effects[key];
+      const effect = key === "bloom" && !effects.bloom ? effects.glow : effects[key];
       if (!effect?.enabled) return false;
       const states = effect.states || EFFECT_STATES;
       const targets = effect.targets || ["avatar", "accessories"];
@@ -225,7 +226,8 @@ export class AvatarRenderer {
   }
 
   effectSprite(image, ids) {
-    if (!ids.length) return { canvas: image, pad: 0, width: image.width, height: image.height };
+    if (!ids.length || typeof document === "undefined") return { canvas: image, pad: 0, width: image.naturalWidth || image.width, height: image.naturalHeight || image.height };
+    if (!this.effectCache) this.effectCache = new WeakMap();
     const effects = this.preferences.effects;
     const signature = ids.map(key => `${key}:${JSON.stringify(effects[key])}`).join("|");
     let cache = this.effectCache.get(image);
@@ -375,6 +377,7 @@ export class AvatarRenderer {
       const followsAvatar = item.follow !== false;
       const sprite = this.effectSprite(image, ids);
       ctx.save();
+      ctx.filter = this.effectFilter(ids);
       if (followsAvatar) {
         ctx.translate(motion.centerX, motion.centerY);
         ctx.rotate(motion.rotation);
