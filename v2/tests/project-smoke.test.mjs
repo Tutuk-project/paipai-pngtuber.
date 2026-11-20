@@ -87,6 +87,8 @@ test("collaboration preview and OBS overlay both render per-member accessories",
   const overlay = read("src/overlay.js");
   assert.ok(app.includes("entry.renderer.setAccessories(member.accessories || [])"));
   assert.ok(app.includes("roomPreviewRenderers.values()"));
+  assert.ok(app.includes("function drawRoomStageFrame()"));
+  assert.ok(app.includes("requestAnimationFrame(drawRoomStageFrame)"));
   assert.ok(overlay.includes("renderer.setAccessories(member.accessories || [])"));
 });
 
