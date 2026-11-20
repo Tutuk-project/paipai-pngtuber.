@@ -922,6 +922,9 @@ function renderRoomParticipants() {
     entry.renderer.setAssets(member.assets || {});
     entry.renderer.setAccessories(member.accessories || []);
     entry.renderer.setPreferences(preferences);
+    const background = preferences.background || {};
+    entry.renderer.setBackgroundImage(background.mode === "image" ? background.src : null);
+    entry.renderer.setBackgroundVideo(background.mode === "video" ? background.src : null);
     entry.renderer.setState(member.state === "talking" ? "talking" : "idle");
     entry.renderer.start();
 
