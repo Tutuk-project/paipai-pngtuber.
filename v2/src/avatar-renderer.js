@@ -486,9 +486,15 @@ export class AvatarRenderer {
     const p = this.preferences;
     const effects = p.effects || {};
     const ids = this.activeEffects(expression, "avatar");
-    const fit = Math.min(W / image.width, H / image.height);
+    // Leave safe breathing room around the full transparent PNG canvas so the
+    // character is not clipped by the stage preview or downstream Browser Source.
+    const fit = Math.min((W * 0.86) / image.width, (H * 0.86) / image.height);
+    const requestedPercent = Number(p.avatarScalePercent);
+    const scaleMultiplier = Number.isFinite(requestedPercent)
+      ? Math.max(0, Math.min(2, 1 + requestedPercent / 100))
+      : Math.max(0, Math.min(2, Number(p.scale) || 1));
     const breath = Math.sin(now / 1750 * Math.PI * 2) * (Number(p.breathing) || 0) / 100;
-    const scale = fit * Math.max(0.1, Math.min(4, Number(p.scale) || 1)) * (1 + breath);
+    const scale = fit * scaleMultiplier * (1 + breath);
     const width = image.width * scale, height = image.height * scale;
     const talking = expression === "talking" || expression === "talking_blink";
     const bounceMs = Math.max(80, Math.min(1000, Number(p.bounceMs) || 240));
