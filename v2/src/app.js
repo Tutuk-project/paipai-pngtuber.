@@ -921,9 +921,15 @@ async function loadRoomMembers() {
 
 function renderRoomParticipants() {
   const canvas = $("roomStage");
+  const visible = roomMembers.slice(0, 4);
+  const hostMember = visible.find(member => member.is_host) || visible[0];
+  const output = hostMember?.preferences || profilePreferences;
+  const width = Math.max(320, Math.min(3840, Math.round(Number(output.outputWidth) || 1080)));
+  const height = Math.max(320, Math.min(3840, Math.round(Number(output.outputHeight) || 1920)));
+  if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+  canvas.style.aspectRatio = `${width} / ${height}`;
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const visible = roomMembers.slice(0, 4);
   const slotWidth = canvas.width / Math.max(1, visible.length);
   const tags = $("participantNames");
   tags.replaceChildren();
