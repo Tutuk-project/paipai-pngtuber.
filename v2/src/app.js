@@ -530,6 +530,7 @@ async function api(action, payload = {}) {
       if (error.context instanceof Response) {
         const body = await error.context.clone().json();
         if (body?.error) message = body.error;
+        if (body?.code) message = `[${body.code}] ${message}`;
       }
     } catch { /* Keep the SDK error message when no JSON response is available. */ }
     throw new Error(message);
@@ -1466,7 +1467,12 @@ function setupEvents() {
     $("loginButton").disabled = true;
     try { await login(username, pairing); }
     catch (error) { showMessage("loginMessage", error.message, "error"); if (/pairing|pasangkan/i.test(error.message)) $("pairingWrap").hidden = false; }
-    finally { $("loginButton").disabled = false; }
+    finally {
+      // Bootstrap/pairing credentials are one-time secrets. Never leave them
+      // visible in the form after either success or failure.
+      $("pairingInput").value = "";
+      $("loginButton").disabled = false;
+    }
   });
   $("logoutButton").addEventListener("click", logout);
   $("topRoomButton").addEventListener("click", openRoomChooser);
