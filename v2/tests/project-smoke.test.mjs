@@ -210,6 +210,20 @@ test("Admin account deletion queues expression, accessory and background objects
   assert.ok(app.includes("Storage object(s) still need cleanup"));
 });
 
+test("clearing an uploaded background detaches it before queued Storage cleanup", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const app = read("src/app.js");
+  const clear = edge.slice(edge.indexOf('if (action === "clear_background")'), edge.indexOf('if (action === "profile_save")'));
+  assert.ok(clear.includes('"background_cleared"'));
+  assert.ok(clear.indexOf("enqueueStorageCleanup") < clear.indexOf('db.from("vio_profiles").upsert'));
+  assert.ok(clear.includes("cancelStorageCleanup"));
+  assert.ok(clear.includes("processStorageCleanup(db, job)"));
+  assert.ok(clear.includes("mode: \"transparent\""));
+  assert.ok(app.includes("Clear uploaded background"));
+  assert.ok(app.includes('api("clear_background")'));
+  assert.ok(app.includes("Background sudah dilepas dari profil"));
+});
+
 test("portrait and custom output resolutions are shared by editor, room and OBS", () => {
   const app = read("src/app.js");
   const overlay = read("src/overlay.js");
