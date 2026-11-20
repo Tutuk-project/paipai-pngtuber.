@@ -374,3 +374,15 @@ test("Admin deletion disables identity and revokes support/rooms before Auth cle
   assert.ok(deletion.includes("deletion start audit failed"));
   assert.ok(deletion.includes("await cancelDeletionJobs"));
 });
+
+
+test("Storage cleanup retry refuses to remove still-referenced assets", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const cleanup = edge.slice(edge.indexOf("async function processStorageCleanup"), edge.indexOf("async function signBackground"));
+  assert.ok(cleanup.includes('db.from("vio_character_assets")'));
+  assert.ok(cleanup.includes('db.from("vio_character_accessories")'));
+  assert.ok(cleanup.includes('db.from("vio_profiles")'));
+  assert.ok(cleanup.includes('.contains("preferences", { background: { bucket_id: "vio-backgrounds", storage_path: job.storage_path } })'));
+  assert.ok(cleanup.indexOf("if (referenced)") < cleanup.indexOf('db.storage.from(job.bucket_id).remove'));
+  assert.ok(cleanup.includes("Skipped safely: Storage object is still referenced"));
+});
