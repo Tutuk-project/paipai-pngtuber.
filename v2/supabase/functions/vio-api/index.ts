@@ -734,11 +734,11 @@ Deno.serve(async (req) => {
       const roomId = String(body.room_id || "");
       const token = String(body.overlay_token || "");
       if (!roomId || token.length < 20) return json({ ok: false, error: "Overlay credentials are invalid." }, 400);
-      const { data: room, error } = await db.from("vio_rooms").select("id,status,overlay_token_hash,capacity,expires_at").eq("id", roomId).single();
+      const { data: room, error } = await db.from("vio_rooms").select("id,status,overlay_token_hash,capacity,expires_at,host_user_id").eq("id", roomId).single();
       if (error || !room || room.status !== "active" || new Date(room.expires_at).getTime() <= Date.now() || room.overlay_token_hash !== await sha256(token)) return json({ ok: false, error: "Overlay link is invalid or room is closed or expired." }, 403);
       const { error: deviceError } = await db.from("vio_overlay_devices").upsert({ auth_user_id: authUser.id, room_id: roomId }, { onConflict: "auth_user_id" });
       if (deviceError) throw deviceError;
-      const { data: members, error: memberError } = await db.from("vio_room_members").select("user_id,state,state_updated_at,vio_app_users!inner(username),vio_profiles!inner(preferences,active_character_id),vio_characters(id,vio_character_assets(expression,storage_path,bucket_id),vio_character_accessories(id,name,storage_path,bucket_id,x,y,w,h,mirror,follow_avatar,effects_enabled,sort_order)),vio_room_overrides(overrides)").eq("room_id", roomId);
+      const { data: members, error: memberError } = await db.from("vio_room_members").select("user_id,is_host,state,state_updated_at,vio_app_users!inner(username),vio_profiles!inner(preferences,active_character_id),vio_characters(id,vio_character_assets(expression,storage_path,bucket_id),vio_character_accessories(id,name,storage_path,bucket_id,x,y,w,h,mirror,follow_avatar,effects_enabled,sort_order)),vio_room_overrides(overrides)").eq("room_id", roomId);
       if (memberError) throw memberError;
       const mapped = await Promise.all((members || []).map(async (member: any) => {
         const assets: Record<string, string> = {};
@@ -752,9 +752,9 @@ Deno.serve(async (req) => {
           if (signError || !data?.signedUrl) return null;
           return { id: item.id, name: item.name, src: data.signedUrl, x: item.x, y: item.y, w: item.w, h: item.h, mirror: item.mirror, follow: item.follow_avatar, effectsEnabled: item.effects_enabled, sort_order: item.sort_order };
         }));
-        return { user_id: member.user_id, username: member.vio_app_users?.username || "Unknown", state: member.state || "idle", state_updated_at: member.state_updated_at, assets, accessories: accessories.filter(Boolean), preferences: await signBackground(db, member.vio_profiles?.preferences || {}), overrides: member.vio_room_overrides?.[0]?.overrides || {} };
+        return { user_id: member.user_id, is_host: member.is_host, username: member.vio_app_users?.username || "Unknown", state: member.state || "idle", state_updated_at: member.state_updated_at, assets, accessories: accessories.filter(Boolean), preferences: await signBackground(db, member.vio_profiles?.preferences || {}), overrides: member.vio_room_overrides?.[0]?.overrides || {} };
       }));
-      return json({ ok: true, room: { id: room.id, capacity: room.capacity }, members: mapped });
+      return json({ ok: true, room: { id: room.id, capacity: room.capacity, host_user_id: room.host_user_id }, members: mapped });
     }
 
     return json({ ok: false, error: `Unknown action: ${action}` }, 400);
