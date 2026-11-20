@@ -337,3 +337,27 @@ test("private background media upload is owner-scoped and signed for editor, col
   assert.ok(overlay.includes("renderer.setBackgroundVideo(background.mode === \"video\" ? background.src : null)"));
   assert.ok(app.includes("entry.renderer.setBackgroundImage(background.mode === \"image\" ? background.src : null)"));
 });
+
+
+test("all v2 accessory, background and cleanup dependencies have ordered migrations", () => {
+  const accessories = read("supabase/migrations/003_vio_character_accessories.sql");
+  const backgrounds = read("supabase/migrations/004_vio_background_media.sql");
+  const cleanup = read("supabase/migrations/005_vio_storage_cleanup_queue.sql");
+  assert.match(accessories, /create table if not exists public\\.vio_character_accessories/i);
+  assert.match(backgrounds, /vio-backgrounds/);
+  assert.match(backgrounds, /public = false/);
+  assert.match(cleanup, /create table if not exists public\\.vio_storage_cleanup_queue/i);
+  assert.match(cleanup, /enable row level security/i);
+});
+
+test("Realtime read and write require active, unexpired rooms", () => {
+  const sql = read("supabase/migrations/002_vio_studio_v2_integrity.sql");
+  const readPolicy = sql.slice(sql.indexOf("create policy vio_room_realtime_read"), sql.indexOf("drop policy if exists vio_room_realtime_write"));
+  const writePolicy = sql.slice(sql.indexOf("create policy vio_room_realtime_write"));
+  for (const policy of [readPolicy, writePolicy]) {
+    assert.match(policy, /r\\.status = 'active'/i);
+    assert.match(policy, /r\\.expires_at > now\\(\\)/i);
+    assert.match(policy, /u\\.is_active/i);
+  }
+  assert.match(readPolicy, /vio_overlay_devices[\\s\\S]*?r\\.status = 'active'/i);
+});
