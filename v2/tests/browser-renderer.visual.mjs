@@ -93,8 +93,8 @@ const html = `<!doctype html>
   performanceRenderer.setState("talking");
   const performanceStart = performance.now();
   for (let frame = 0; frame < 12; frame++) performanceRenderer.render(1700 + frame * 34);
-  const performanceElapsedMs = performance.now() - performanceStart;
   const performancePixels = performanceCanvas.getContext("2d").getImageData(0, 0, performanceCanvas.width, performanceCanvas.height).data;
+  const performanceElapsedMs = performance.now() - performanceStart;
   let performanceVisiblePixels = 0;
   for (let i = 3; i < performancePixels.length; i += 16) if (performancePixels[i] > 0) performanceVisiblePixels++;
   window.__vioVisual = {
