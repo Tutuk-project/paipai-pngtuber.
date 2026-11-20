@@ -118,6 +118,7 @@ export class AvatarRenderer {
   setAssets(assets = {}) {
     this.assets = { ...assets };
     Object.values(this.assets).forEach(src => this.image(src));
+    this.pruneImageCache();
     this.drawOnce();
   }
 
@@ -145,11 +146,30 @@ export class AvatarRenderer {
 
   setAccessories(items = []) {
     this.accessories = items.map(item => ({ ...item, image: this.image(item.src) }));
+    this.pruneImageCache();
     this.drawOnce();
   }
 
+  pruneImageCache() {
+    const retained = new Set([
+      ...Object.values(this.assets || {}),
+      ...(this.accessories || []).map(item => item.src),
+      this.backgroundImageSrc
+    ].filter(Boolean));
+    for (const [src, image] of this.images) {
+      if (retained.has(src)) continue;
+      if (image) {
+        image.onload = null;
+        image.onerror = null;
+      }
+      this.images.delete(src);
+    }
+  }
+
   setBackgroundImage(src) {
+    this.backgroundImageSrc = src || null;
     this.backgroundImage = src ? this.image(src) : null;
+    this.pruneImageCache();
     this.drawOnce();
   }
 
@@ -388,7 +408,7 @@ export class AvatarRenderer {
     }
     const result = { canvas: outputCanvas, pad, width, height, eagleWarp };
     cache.set(signature, result);
-    if (cache.size > 12) cache.delete(cache.keys().next().value);
+    if (cache.size > 4) cache.delete(cache.keys().next().value);
     return result;
   }
 
