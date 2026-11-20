@@ -424,7 +424,18 @@ Deno.serve(async (req) => {
         const { data } = await db.storage.from(asset.bucket_id).createSignedUrl(asset.storage_path, 3600);
         if (data?.signedUrl) signedAssets[asset.expression] = data.signedUrl;
       }
-      return json({ ok: true, assets: signedAssets });
+      const { data: profile, error: profileError } = await db.from("vio_profiles").select("active_character_id").eq("user_id", user.id).maybeSingle();
+      if (profileError) throw profileError;
+      let accessoryQuery = db.from("vio_character_accessories").select("id,name,storage_path,bucket_id,x,y,w,h,mirror,follow_avatar,effects_enabled,sort_order").eq("user_id", user.id).order("sort_order");
+      if (profile?.active_character_id) accessoryQuery = accessoryQuery.eq("character_id", profile.active_character_id);
+      const { data: accessories, error: accessoryError } = await accessoryQuery;
+      if (accessoryError) throw accessoryError;
+      const signedAccessories = await Promise.all((accessories || []).map(async (item: any) => {
+        const { data, error: signError } = await db.storage.from(item.bucket_id).createSignedUrl(item.storage_path, 3600);
+        if (signError || !data?.signedUrl) return null;
+        return { id: item.id, name: item.name, src: data.signedUrl, x: item.x, y: item.y, w: item.w, h: item.h, mirror: item.mirror, follow: item.follow_avatar, effectsEnabled: item.effects_enabled, sort_order: item.sort_order };
+      }));
+      return json({ ok: true, assets: signedAssets, accessories: signedAccessories.filter(Boolean) });
     }
 
     if (action === "create_room") {
@@ -567,6 +578,64 @@ Deno.serve(async (req) => {
         await db.from("vio_profiles").upsert({ user_id: user.id, active_character_id: character.id });
       }
       const { error } = await db.from("vio_character_assets").upsert({ user_id: user.id, character_id: character.id, expression, storage_path: path, bucket_id: "vio-studio-assets", mime_type: mime, size_bytes: size, updated_at: new Date().toISOString() }, { onConflict: "character_id,expression" });
+      if (error) throw error;
+      return json({ ok: true });
+    }
+
+    if (action === "record_accessory") {
+      const user = requireUser();
+      const storagePath = String(body.storage_path || "");
+      const name = String(body.name || "Accessory").trim().slice(0, 120);
+      const mime = String(body.mime_type || "");
+      const size = Number(body.size_bytes);
+      if (storagePath.length > 512 || !storagePath.startsWith(`${user.id}/characters/default/accessories/`) || storagePath.split("/").some(part => !part || part === "." || part === "..") || !["image/png", "image/webp"].includes(mime) || !Number.isSafeInteger(size) || size < 1 || size > 8388608) return json({ ok: false, error: "Accessory metadata is invalid." }, 400);
+      let { data: character, error: characterError } = await db.from("vio_characters").select("id").eq("user_id", user.id).eq("name", "Default").maybeSingle();
+      if (characterError) throw characterError;
+      if (!character) {
+        const { data, error } = await db.from("vio_characters").insert({ user_id: user.id, name: "Default" }).select("id").single();
+        if (error) throw error;
+        character = data;
+        const { error: profileError } = await db.from("vio_profiles").upsert({ user_id: user.id, active_character_id: character.id });
+        if (profileError) throw profileError;
+      }
+      const { data: accessory, error } = await db.from("vio_character_accessories").insert({ user_id: user.id, character_id: character.id, name, storage_path: storagePath, bucket_id: "vio-studio-assets", mime_type: mime, size_bytes: size }).select("id").single();
+      if (error) throw error;
+      return json({ ok: true, accessory_id: accessory.id });
+    }
+
+    if (action === "update_accessory") {
+      const user = requireUser();
+      const accessoryId = String(body.accessory_id || "");
+      const updates: Record<string, unknown> = {};
+      for (const key of ["x", "y", "w", "h"] as const) {
+        if (body[key] === undefined) continue;
+        const value = Number(body[key]);
+        const min = key === "w" || key === "h" ? 0.01 : 0;
+        const max = key === "w" || key === "h" ? 2 : 1;
+        if (!Number.isFinite(value) || value < min || value > max) return json({ ok: false, error: `Invalid accessory ${key}.` }, 400);
+        updates[key] = value;
+      }
+      for (const key of ["mirror", "follow_avatar", "effects_enabled"] as const) {
+        if (body[key] !== undefined) {
+          if (typeof body[key] !== "boolean") return json({ ok: false, error: `Invalid accessory ${key}.` }, 400);
+          updates[key] = body[key];
+        }
+      }
+      if (!Object.keys(updates).length) return json({ ok: false, error: "No accessory changes supplied." }, 400);
+      updates.updated_at = new Date().toISOString();
+      const { error } = await db.from("vio_character_accessories").update(updates).eq("id", accessoryId).eq("user_id", user.id);
+      if (error) throw error;
+      return json({ ok: true });
+    }
+
+    if (action === "delete_accessory") {
+      const user = requireUser();
+      const accessoryId = String(body.accessory_id || "");
+      const { data: accessory, error: lookupError } = await db.from("vio_character_accessories").select("id,bucket_id,storage_path").eq("id", accessoryId).eq("user_id", user.id).single();
+      if (lookupError) throw lookupError;
+      const { error: storageError } = await db.storage.from(accessory.bucket_id).remove([accessory.storage_path]);
+      if (storageError) throw storageError;
+      const { error } = await db.from("vio_character_accessories").delete().eq("id", accessoryId).eq("user_id", user.id);
       if (error) throw error;
       return json({ ok: true });
     }
