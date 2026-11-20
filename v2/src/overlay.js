@@ -193,7 +193,17 @@ async function boot() {
     }, 15000);
   } catch (error) {
     console.error("Vio Studio OBS overlay error:", error);
-    setStatus(`OBS OVERLAY ERROR: ${error.message}`, true);
+    let message = error instanceof Error ? error.message : String(error);
+    const context = error && typeof error === "object" ? error.context : null;
+    if (context instanceof Response) {
+      try {
+        const body = await context.clone().json();
+        if (body?.error) message = String(body.error);
+        if (body?.code) message = `[${body.code}] ${message}`;
+        if (body?.details) message += ` · ${body.details}`;
+      } catch { /* Keep the SDK message if the response is not JSON. */ }
+    }
+    setStatus(`OBS OVERLAY ERROR: ${message}`, true);
   }
 }
 
