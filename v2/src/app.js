@@ -27,7 +27,7 @@ let currentMicState = "idle";
 let assetUrls = { idle: null, talking: null, blink: null, talking_blink: null };
 let characterAccessories = [];
 let selectedAccessoryId = null;
-let profilePreferences = { scale: 1, sensitivity: 1, boostDb: 6, deviceId: "" };
+let profilePreferences = { scale: 1, outputWidth: 1080, outputHeight: 1920, sensitivity: 1, boostDb: 6, deviceId: "" };
 let roomOverrides = { scale: 1, x: 0, y: 0, sensitivity: 1, boostDb: 6, deviceId: "" };
 let renderFrame = 0;
 let playerSequence = 0;
@@ -435,7 +435,7 @@ async function loadCurrentProfile() {
   try {
     const result = await api("profile_get");
     currentUser = { ...currentUser, ...result.account };
-    profilePreferences = { scale: 1, sensitivity: 1, boostDb: 6, deviceId: "", ...(result.profile?.preferences || {}) };
+    profilePreferences = { scale: 1, outputWidth: 1080, outputHeight: 1920, sensitivity: 1, boostDb: 6, deviceId: "", ...(result.profile?.preferences || {}) };
     roomOverrides = { scale: profilePreferences.scale, x: 0, y: 0, sensitivity: profilePreferences.sensitivity, boostDb: profilePreferences.boostDb, deviceId: profilePreferences.deviceId || "" };
     if (audio) audio.setOptions({ sensitivity: roomOverrides.sensitivity, boostDb: roomOverrides.boostDb, deviceId: roomOverrides.deviceId });
   } catch (error) {
@@ -698,6 +698,15 @@ let previewBlinkTimer = 0;
 
 function drawPreview() {
   const canvas = $("avatarCanvas");
+  const width = Math.max(320, Math.min(3840, Math.round(Number(profilePreferences.outputWidth) || 1080)));
+  const height = Math.max(320, Math.min(3840, Math.round(Number(profilePreferences.outputHeight) || 1920)));
+  if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+  const stageFrame = canvas.closest(".stage-frame");
+  if (stageFrame) stageFrame.style.aspectRatio = `${width} / ${height}`;
+  const roomStage = $("roomStage");
+  if (roomStage && (roomStage.width !== width || roomStage.height !== height)) {
+    roomStage.width = width; roomStage.height = height; roomStage.style.aspectRatio = `${width} / ${height}`;
+  }
   if (!avatarRenderer) avatarRenderer = new AvatarRenderer(canvas);
   avatarRenderer.start();
   avatarRenderer.setAssets(assetUrls);
