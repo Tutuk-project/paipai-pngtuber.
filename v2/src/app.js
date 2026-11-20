@@ -37,6 +37,7 @@ const remotePlayerStates = new Map();
 const remotePlayerSequences = new Map();
 const remoteLayoutSequences = new Map();
 const roomPreviewImages = new Map();
+const roomPreviewRenderers = new Map();
 
 function showMessage(target, message, type = "info") {
   const el = $(target);
@@ -556,6 +557,7 @@ async function uploadCharacterAccessories(files) {
   characterAccessories = result.accessories || [];
   drawPreview();
   renderAccessorySettingsList();
+  if (currentRoom) await loadRoomMembers();
 }
 
 function renderAccessorySettingsList() {
@@ -849,37 +851,50 @@ function renderRoomParticipants() {
   const tags = $("participantNames");
   tags.replaceChildren();
   if (!visible.length) {
+    for (const entry of roomPreviewRenderers.values()) entry.renderer.stop();
+    roomPreviewRenderers.clear();
     tags.textContent = "Waiting for participants…";
     return;
   }
-  for (const [index, member] of visible.entries()) {
-    const state = member.state === "talking" ? "talking" : "idle";
-    const url = member.assets?.[state] || member.assets?.idle || member.assets?.talking;
-    if (url) {
-      let image = roomPreviewImages.get(url);
-      if (!image) {
-        image = new Image();
-        image.onload = () => renderRoomParticipants();
-        image.onerror = () => roomPreviewImages.delete(url);
-        image.src = url;
-        roomPreviewImages.set(url, image);
-      }
-      if (image.complete && image.naturalWidth) {
-        const overrides = member.overrides || {};
-        const avatarScale = Math.max(0.2, Math.min(2.2, Number(overrides.scale) || 1));
-        const scale = Math.min(slotWidth * 0.78 / image.width, canvas.height * 0.82 / image.height) * avatarScale;
-        const width = image.width * scale;
-        const height = image.height * scale;
-        const xShift = Math.max(-100, Math.min(100, Number(overrides.x) || 0)) * slotWidth * 0.004;
-        const yShift = Math.max(-100, Math.min(100, Number(overrides.y) || 0)) * canvas.height * 0.0035;
-        const centerX = slotWidth * (index + 0.5) + xShift;
-        const centerY = canvas.height * 0.5 + yShift;
-        ctx.drawImage(image, centerX - width / 2, centerY - height / 2, width, height);
-      }
+  const visibleIds = new Set(visible.map(member => member.user_id));
+  for (const [userId, entry] of roomPreviewRenderers) {
+    if (!visibleIds.has(userId)) {
+      entry.renderer.stop();
+      roomPreviewRenderers.delete(userId);
     }
+  }
+  for (const [index, member] of visible.entries()) {
+    let entry = roomPreviewRenderers.get(member.user_id);
+    if (!entry) {
+      const playerCanvas = document.createElement("canvas");
+      entry = { canvas: playerCanvas, renderer: new AvatarRenderer(playerCanvas) };
+      roomPreviewRenderers.set(member.user_id, entry);
+    }
+    const width = Math.max(1, Math.round(slotWidth));
+    const height = Math.max(1, canvas.height);
+    if (entry.canvas.width !== width || entry.canvas.height !== height) {
+      entry.canvas.width = width;
+      entry.canvas.height = height;
+    }
+    const overrides = member.overrides || {};
+    const preferences = {
+      ...(member.preferences || {}),
+      scale: overrides.scale ?? member.preferences?.scale ?? 1,
+      offsetX: Math.max(-100, Math.min(100, Number(overrides.x) || 0)) * width * 0.004,
+      offsetY: Math.max(-100, Math.min(100, Number(overrides.y) || 0)) * height * 0.0035
+    };
+    entry.renderer.setAssets(member.assets || {});
+    entry.renderer.setAccessories(member.accessories || []);
+    entry.renderer.setPreferences(preferences);
+    entry.renderer.setState(member.state === "talking" ? "talking" : "idle");
+    entry.renderer.start();
+    ctx.drawImage(entry.canvas, slotWidth * index, 0, slotWidth, canvas.height);
+
+    const state = member.state === "talking" ? "talking" : "idle";
     const tag = document.createElement("span");
     tag.className = `participant-tag ${state === "talking" ? "is-talking" : ""}`;
-    const name = document.createElement("strong"); name.textContent = member.username;
+    const name = document.createElement("strong");
+    name.textContent = member.username;
     tag.append(name, document.createTextNode(state.toUpperCase()));
     tags.append(tag);
   }
@@ -898,6 +913,8 @@ async function leaveRoom(restoreView = true) {
       try { await api("profile_save", { display_name: currentUser.display_name || currentUser.username, preferences: profilePreferences }); } catch (error) { console.warn("Room restore pointer could not be cleared:", error.message); }
     }
   }
+  for (const entry of roomPreviewRenderers.values()) entry.renderer.stop();
+  roomPreviewRenderers.clear();
   currentRoom = null; roomMembers = []; remotePlayerStates.clear(); remotePlayerSequences.clear(); remoteLayoutSequences.clear(); roomPreviewImages.clear();
   $("app").classList.remove("in-room");
   if (restoreView && currentUser) selectMenu("profile");
