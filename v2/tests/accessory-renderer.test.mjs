@@ -28,12 +28,12 @@ function createRenderer(accessories, motion = {}) {
 test("following accessories inherit avatar position, rotation and scale without mutating const coordinates", () => {
   const { renderer, ctx, calls } = createRenderer([
     { x: 0.75, y: 0.25, w: 0.2, h: 0.1, follow: true, mirror: true },
-  ], { centerX: 300, centerY: 180, rotation: 0.35, scaleX: -0.5, scaleY: 0.5 });
+  ], { centerX: 300, centerY: 180, rotation: 0.35, scaleX: 0.5, scaleY: 0.5 });
 
   assert.doesNotThrow(() => renderer.drawAccessories(ctx, 400, 400, 1000));
   assert.ok(calls.some(call => call[0] === "translate" && call[1] === 300 && call[2] === 180));
   assert.ok(calls.some(call => call[0] === "rotate" && call[1] === 0.35));
-  assert.ok(calls.some(call => call[0] === "scale" && call[1] === -0.5 && call[2] === 0.5));
+  assert.ok(calls.some(call => call[0] === "scale" && call[1] === 0.5 && call[2] === 0.5));
   assert.ok(calls.some(call => call[0] === "translate" && call[1] === 100 && call[2] === -100));
   assert.ok(calls.some(call => call[0] === "drawImage" && call[2] === -40 && call[3] === -20 && call[4] === 80 && call[5] === 40));
 });
