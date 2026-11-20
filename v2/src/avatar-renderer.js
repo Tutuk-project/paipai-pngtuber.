@@ -223,8 +223,8 @@ export class AvatarRenderer {
       if (!image?.complete || !image.naturalWidth) continue;
       const x = (Number(item.x ?? 0.5) - 0.5) * W;
       const y = (Number(item.y ?? 0.5) - 0.5) * H;
-      const width = Math.max(1, Number(item.w) || 0.18) * W;
-      const height = Math.max(1, Number(item.h) || 0.18) * H;
+      const width = Math.max(0.01, Math.min(1, Number(item.w) || 0.18)) * W;
+      const height = Math.max(0.01, Math.min(1, Number(item.h) || 0.18)) * H;
       const followsAvatar = item.follow !== false;
       ctx.save();
       if (followsAvatar) {
