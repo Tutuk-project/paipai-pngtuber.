@@ -16,6 +16,21 @@ const DEFAULTS = {
   effects: { enabled: false, stickerEffectsEnabled: true, ...structuredClone(EFFECT_DEFAULTS) }
 };
 
+export function averageVisibleColor(pixels, fallback = "#ffd7b8") {
+  let red = 0, green = 0, blue = 0, count = 0;
+  for (let i = 0; i < pixels.length; i += 16) {
+    if (pixels[i + 3] > 100) {
+      red += pixels[i];
+      green += pixels[i + 1];
+      blue += pixels[i + 2];
+      count++;
+    }
+  }
+  return count
+    ? `rgb(${Math.round(red / count)},${Math.round(green / count)},${Math.round(blue / count)})`
+    : fallback;
+}
+
 export function fisheyeWarpPixels(source, width, height, intensity) {
   const output = new Uint8ClampedArray(source.length);
   const cx = (width - 1) / 2;
@@ -290,6 +305,37 @@ export class AvatarRenderer {
       ctx.drawImage(image, pad, pad, width, height);
       ctx.filter = `blur(${Math.max(2, Number(bloom.intensity) * 0.12)}px) brightness(2.1) saturate(1.6)`;
       ctx.drawImage(image, pad, pad, width, height);
+      ctx.restore();
+
+      let tint = bloom.color || "#ffd7b8";
+      try {
+        const pixels = ctx.getImageData(pad, pad, width, height).data;
+        tint = averageVisibleColor(pixels, tint);
+      } catch (error) {
+        console.warn("Bloom color sampling unavailable; using configured tint.", error);
+      }
+      const rgba = tint.startsWith("rgb(") ? tint.replace("rgb(", "rgba(").replace(")", ",0.65)") : tint;
+      const intensity = Math.max(0, Math.min(100, Number(bloom.intensity) || 0)) / 100;
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.globalAlpha = 0.08 + intensity * 0.2;
+      ctx.translate(pad + width / 2, pad + height / 2);
+      const rayCount = 10;
+      const reach = Math.max(width, height) * 0.8;
+      for (let ray = 0; ray < rayCount; ray++) {
+        const angle = ray * Math.PI * 2 / rayCount;
+        const spread = 0.045 + intensity * 0.055;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.lineTo(Math.cos(angle - spread) * reach, Math.sin(angle - spread) * reach);
+        ctx.lineTo(Math.cos(angle + spread) * reach, Math.sin(angle + spread) * reach);
+        ctx.closePath();
+        const gradient = ctx.createRadialGradient(0, 0, 0, 0, 0, reach);
+        gradient.addColorStop(0, rgba);
+        gradient.addColorStop(1, "rgba(255,255,255,0)");
+        ctx.fillStyle = gradient;
+        ctx.fill();
+      }
       ctx.restore();
     }
     if (stroke) {
