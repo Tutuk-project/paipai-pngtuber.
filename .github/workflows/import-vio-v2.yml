@@ -59,7 +59,7 @@ jobs:
           PY
           cd v2
           bash tests/check-syntax.sh
-          rm "$archive"
+          rm "../$archive"
           echo "Imported $(find v2 -type f | wc -l) files into /v2"
 
       - name: Commit extracted source to development branch
