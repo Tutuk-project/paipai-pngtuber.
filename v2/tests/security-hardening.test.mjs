@@ -82,3 +82,11 @@ test("character library actions exist and expression uploads are bound to an own
   assert.match(record, /expectedPath/);
   assert.doesNotMatch(record, /eq\("name", "Default"\)/);
 });
+
+test("my_assets only returns the selected character assets and includes its id", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const handler = edge.match(/if \(action === "my_assets"\)[\s\S]*?if \(action === "get_my_active_room"\)/)?.[0] || "";
+  assert.match(handler, /character_id: characterId/);
+  assert.match(handler, /eq\("character_id", characterId/);
+  assert.match(handler, /active_character_id/);
+});
