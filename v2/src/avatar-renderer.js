@@ -1,8 +1,41 @@
+const EFFECT_STATES = ["idle", "talking", "blink", "talking_blink"];
+const EFFECT_KEYS = ["filter", "stroke", "shadow", "bloom", "distort", "eagle", "shake"];
+const EFFECT_DEFAULTS = {
+  filter: { enabled: false, intensity: 55, color: "#ffd7b8", thickness: 8, invert: false, filter: { hue: 0, saturation: 100, brightness: 100, contrast: 100, invert: 0, grayscale: 0, sepia: 0 }, states: [...EFFECT_STATES], targets: ["avatar", "accessories"] },
+  stroke: { enabled: false, intensity: 55, color: "#ffffff", thickness: 8, invert: false, states: [...EFFECT_STATES], targets: ["avatar", "accessories"] },
+  shadow: { enabled: false, intensity: 55, color: "#101010", thickness: 8, invert: false, states: [...EFFECT_STATES], targets: ["avatar", "accessories"] },
+  bloom: { enabled: false, intensity: 55, color: "#ffd7b8", thickness: 8, invert: false, states: [...EFFECT_STATES], targets: ["avatar", "accessories"] },
+  distort: { enabled: false, intensity: 20, color: "#ffd7b8", thickness: 8, invert: false, states: [...EFFECT_STATES], targets: ["avatar", "accessories"] },
+  eagle: { enabled: false, intensity: 55, color: "#ffd7b8", thickness: 8, invert: false, states: [...EFFECT_STATES], targets: ["avatar", "accessories"] },
+  shake: { enabled: false, intensity: 55, color: "#ffd7b8", thickness: 8, invert: false, states: [...EFFECT_STATES], targets: ["avatar", "accessories"] }
+};
 const DEFAULTS = {
   scale: 1, mirror: true, bounce: 0.035, sway: 0, breathing: 0, blinkRate: 4,
-  fps: 30, outputWidth: 1080, outputHeight: 1920, offsetX: 0, offsetY: 0, background: { mode: "transparent", color: "#11151b", color1: "#254c4a", color2: "#e2b48c", angle: 135 },
-  effects: { glow: { enabled: false, intensity: 45, color: "#ffd7b8" }, shadow: { enabled: false, intensity: 45, color: "#101010" }, stroke: { enabled: false, intensity: 45, color: "#ffffff", thickness: 5 }, filter: { enabled: false, hue: 0, saturation: 100, brightness: 100, contrast: 100, grayscale: 0, sepia: 0 }, distort: { enabled: false, intensity: 20 } }
+  fps: 30, outputWidth: 1080, outputHeight: 1920, offsetX: 0, offsetY: 0,
+  background: { mode: "transparent", color: "#11151b", color1: "#254c4a", color2: "#e2b48c", angle: 135 },
+  effects: { enabled: false, stickerEffectsEnabled: true, ...structuredClone(EFFECT_DEFAULTS) }
 };
+
+function normalizeEffects(input = {}) {
+  const source = { ...(input || {}) };
+  if (source.glow && !source.bloom) source.bloom = source.glow;
+  const hasLegacyEffect = EFFECT_KEYS.some(key => source[key] && typeof source[key] === "object");
+  const effects = {
+    enabled: source.enabled ?? hasLegacyEffect,
+    stickerEffectsEnabled: source.stickerEffectsEnabled ?? true
+  };
+  for (const key of EFFECT_KEYS) {
+    const incoming = source[key] || {};
+    effects[key] = {
+      ...structuredClone(EFFECT_DEFAULTS[key]),
+      ...incoming,
+      filter: key === "filter" ? { ...EFFECT_DEFAULTS.filter.filter, ...(incoming.filter || {}) } : incoming.filter,
+      states: Array.isArray(incoming.states) ? incoming.states.map(state => state === "talkingBlink" ? "talking_blink" : state) : [...EFFECT_STATES],
+      targets: Array.isArray(incoming.targets) ? [...incoming.targets] : ["avatar", "accessories"]
+    };
+  }
+  return effects;
+}
 
 export class AvatarRenderer {
   constructor(canvas) {
@@ -10,6 +43,7 @@ export class AvatarRenderer {
     this.ctx = canvas.getContext("2d", { alpha: true });
     this.assets = {};
     this.images = new Map();
+    this.effectCache = new WeakMap();
     this.accessories = [];
     this.state = "idle";
     this.preferences = structuredClone(DEFAULTS);
@@ -51,15 +85,7 @@ export class AvatarRenderer {
       ...structuredClone(DEFAULTS),
       ...preferences,
       background: { ...DEFAULTS.background, ...(preferences.background || {}) },
-      effects: {
-        ...structuredClone(DEFAULTS.effects),
-        ...(preferences.effects || {}),
-        glow: { ...DEFAULTS.effects.glow, ...(preferences.effects?.glow || {}) },
-        shadow: { ...DEFAULTS.effects.shadow, ...(preferences.effects?.shadow || {}) },
-        stroke: { ...DEFAULTS.effects.stroke, ...(preferences.effects?.stroke || {}) },
-        filter: { ...DEFAULTS.effects.filter, ...(preferences.effects?.filter || {}) },
-        distort: { ...DEFAULTS.effects.distort, ...(preferences.effects?.distort || {}) }
-      }
+      effects: normalizeEffects(preferences.effects || {})
     };
     const background = this.preferences.background;
     if (background.mode === "video") {
@@ -143,8 +169,8 @@ export class AvatarRenderer {
       ? (blinking ? "talking_blink" : "talking")
       : (blinking ? "blink" : "idle");
     const image = this.image(this.assets[expression] || this.assets[this.state] || this.assets.idle || this.assets.talking);
-    if (image?.complete && image.naturalWidth) this.drawAvatar(ctx, image, W, H, now);
-    this.drawAccessories(ctx, W, H, now);
+    if (image?.complete && image.naturalWidth) this.drawAvatar(ctx, image, W, H, now, expression);
+    this.drawAccessories(ctx, W, H, now, expression);
   }
 
   blinkDelay() {
@@ -179,80 +205,175 @@ export class AvatarRenderer {
     ctx.drawImage(image, (W - width) / 2, (H - height) / 2, width, height);
   }
 
-  drawAvatar(ctx, image, W, H, now) {
+  activeEffects(state, target, item = null) {
+    const effects = this.preferences.effects || {};
+    if (!effects.enabled || (target === "accessories" && (!effects.stickerEffectsEnabled || item?.effectsEnabled === false))) return [];
+    return EFFECT_KEYS.filter(key => {
+      const effect = effects[key];
+      if (!effect?.enabled) return false;
+      const states = effect.states || EFFECT_STATES;
+      const targets = effect.targets || ["avatar", "accessories"];
+      return (states.includes("all") || states.includes(state) || (state === "talking_blink" && states.includes("talkingBlink")))
+        && (targets.includes("all") || targets.includes(target));
+    });
+  }
+
+  effectFilter(ids) {
+    if (!ids.includes("filter")) return "none";
+    const filter = this.preferences.effects.filter.filter || {};
+    return `hue-rotate(${Number(filter.hue) || 0}deg) saturate(${Number(filter.saturation ?? 100)}%) brightness(${Number(filter.brightness ?? 100)}%) contrast(${Number(filter.contrast ?? 100)}%) invert(${Number(filter.invert) || 0}%) grayscale(${Number(filter.grayscale) || 0}%) sepia(${Number(filter.sepia) || 0}%)`;
+  }
+
+  effectSprite(image, ids) {
+    if (!ids.length) return { canvas: image, pad: 0, width: image.width, height: image.height };
+    const effects = this.preferences.effects;
+    const signature = ids.map(key => `${key}:${JSON.stringify(effects[key])}`).join("|");
+    let cache = this.effectCache.get(image);
+    if (!cache) { cache = new Map(); this.effectCache.set(image, cache); }
+    if (cache.has(signature)) return cache.get(signature);
+    const width = image.naturalWidth || image.width;
+    const height = image.naturalHeight || image.height;
+    const stroke = ids.includes("stroke") ? effects.stroke : null;
+    const pad = stroke ? Math.max(2, Math.min(32, Number(stroke.thickness) || 8)) : 0;
+    const canvas = document.createElement("canvas");
+    canvas.width = width + pad * 2;
+    canvas.height = height + pad * 2;
+    const ctx = canvas.getContext("2d");
+    const shadow = ids.includes("shadow") ? effects.shadow : null;
+    const bloom = ids.includes("bloom") ? effects.bloom : null;
+    if (shadow) {
+      ctx.save();
+      ctx.shadowColor = shadow.color || "#101010";
+      ctx.shadowBlur = Math.max(0, Number(shadow.intensity) || 0) * 0.28;
+      ctx.shadowOffsetY = Math.max(0, Number(shadow.intensity) || 0) * 0.1;
+      ctx.drawImage(image, pad, pad, width, height);
+      ctx.restore();
+    }
+    if (bloom) {
+      ctx.save();
+      ctx.globalCompositeOperation = "screen";
+      ctx.shadowColor = bloom.color || "#ffd7b8";
+      ctx.shadowBlur = 12 + Math.max(0, Number(bloom.intensity) || 0) * 0.5;
+      ctx.globalAlpha = 0.8;
+      ctx.drawImage(image, pad, pad, width, height);
+      ctx.filter = `blur(${Math.max(2, Number(bloom.intensity) * 0.12)}px) brightness(2.1) saturate(1.6)`;
+      ctx.drawImage(image, pad, pad, width, height);
+      ctx.restore();
+    }
+    if (stroke) {
+      const mask = document.createElement("canvas");
+      mask.width = canvas.width; mask.height = canvas.height;
+      const maskCtx = mask.getContext("2d");
+      maskCtx.drawImage(image, pad, pad, width, height);
+      maskCtx.globalCompositeOperation = "source-in";
+      maskCtx.fillStyle = stroke.color || "#ffffff";
+      maskCtx.fillRect(0, 0, mask.width, mask.height);
+      ctx.save();
+      if (!stroke.invert) {
+        const thickness = pad;
+        for (let angle = 0; angle < 8; angle++) {
+          const rad = angle * Math.PI / 4;
+          ctx.drawImage(mask, Math.cos(rad) * thickness, Math.sin(rad) * thickness);
+        }
+      } else {
+        ctx.drawImage(image, pad, pad, width, height);
+        ctx.globalCompositeOperation = "source-atop";
+        ctx.strokeStyle = stroke.color || "#ffffff";
+        ctx.lineWidth = pad;
+        ctx.strokeRect(pad, pad, width, height);
+      }
+      ctx.restore();
+    }
+    ctx.save();
+    ctx.filter = this.effectFilter(ids);
+    ctx.drawImage(image, pad, pad, width, height);
+    ctx.restore();
+    const result = { canvas, pad, width, height };
+    cache.set(signature, result);
+    if (cache.size > 12) cache.delete(cache.keys().next().value);
+    return result;
+  }
+
+  drawEffectSprite(ctx, sprite, x, y, width, height, ids, now) {
+    const { canvas, pad } = sprite;
+    const sourceWidth = sprite.width + pad * 2;
+    const sourceHeight = sprite.height + pad * 2;
+    if (ids.includes("distort")) {
+      const strength = Math.max(0, Math.min(1, Number(this.preferences.effects.distort.intensity) / 100 || 0.2));
+      const rows = 36;
+      for (let row = 0; row < rows; row++) {
+        const sourceY = row * sourceHeight / rows;
+        const sliceHeight = sourceHeight / rows + 1;
+        const offset = Math.sin(now / 95 + row * 0.42) * strength * 18 * (width / sourceWidth);
+        ctx.drawImage(canvas, 0, sourceY, sourceWidth, sliceHeight, x + offset, y + sourceY * (height / sourceHeight), width, sliceHeight * (height / sourceHeight) + 1);
+      }
+    } else {
+      ctx.drawImage(canvas, x, y, width, height);
+    }
+    if (ids.includes("eagle")) {
+      const intensity = Math.max(0, Math.min(1, Number(this.preferences.effects.eagle.intensity) / 100 || 0.55));
+      const radius = Math.min(width, height) * (0.22 + intensity * 0.12);
+      ctx.save();
+      ctx.beginPath(); ctx.arc(x + width / 2, y + height / 2, radius, 0, Math.PI * 2); ctx.clip();
+      const zoom = 1 + intensity * 0.55;
+      const zoomW = width * zoom, zoomH = height * zoom;
+      ctx.drawImage(canvas, x + (width - zoomW) / 2, y + (height - zoomH) / 2, zoomW, zoomH);
+      ctx.restore();
+    }
+  }
+
+  drawAvatar(ctx, image, W, H, now, expression = this.state) {
     const p = this.preferences;
     const effects = p.effects || {};
+    const ids = this.activeEffects(expression, "avatar");
     const fit = Math.min(W / image.width, H / image.height);
     const breath = Math.sin(now / 1750 * Math.PI * 2) * (Number(p.breathing) || 0) / 100;
     const scale = fit * Math.max(0.1, Math.min(4, Number(p.scale) || 1)) * (1 + breath);
     const width = image.width * scale, height = image.height * scale;
-    const talking = this.state === "talking";
+    const talking = expression === "talking" || expression === "talking_blink";
     const phase = (now % 240) / 240;
     const bounce = talking ? Math.abs(Math.sin(phase * Math.PI)) * (Number(p.bounce) || 0) * height : Math.sin(now / 520) * 0.006 * height;
     const sway = Number(p.sway) || 0;
     const rotation = sway ? Math.sin(now / (talking ? 570 : 1400)) * sway * Math.PI / 180 : 0;
-    const filter = effects.filter?.enabled
-      ? `hue-rotate(${Number(effects.filter.hue) || 0}deg) saturate(${Number(effects.filter.saturation) || 100}%) brightness(${Number(effects.filter.brightness) || 100}%) contrast(${Number(effects.filter.contrast) || 100}%) grayscale(${Number(effects.filter.grayscale) || 0}%) sepia(${Number(effects.filter.sepia) || 0}%)`
-      : "none";
-    const centerX = W / 2 + (Number(p.offsetX) || 0);
-    const centerY = H / 2 + (Number(p.offsetY) || 0) - bounce;
-    this.avatarMotion = { centerX, centerY, rotation, scaleX: scale * (p.mirror === false ? 1 : -1), scaleY: scale };
+    const shake = ids.includes("shake") ? Math.max(0, Math.min(1, Number(effects.shake.intensity) / 100 || 0.55)) : 0;
+    const shakeX = shake ? Math.sin(now / 19) * Math.cos(now / 31) * shake * 24 : 0;
+    const shakeY = shake ? Math.cos(now / 17) * Math.sin(now / 27) * shake * 24 : 0;
+    const centerX = W / 2 + (Number(p.offsetX) || 0) + shakeX;
+    const centerY = H / 2 + (Number(p.offsetY) || 0) - bounce + shakeY;
+    this.avatarMotion = { centerX, centerY, rotation, scaleX: scale * (p.mirror === false ? 1 : -1), scaleY: scale, shakeX, shakeY };
+    const sprite = this.effectSprite(image, ids);
     ctx.save();
     ctx.translate(centerX, centerY);
     ctx.rotate(rotation);
     ctx.scale(p.mirror === false ? 1 : -1, 1);
-    ctx.filter = filter;
-    if (effects.shadow?.enabled) {
-      ctx.shadowColor = effects.shadow.color || "#101010";
-      ctx.shadowBlur = Math.max(0, Number(effects.shadow.intensity) || 0);
-      ctx.shadowOffsetY = Math.max(0, Number(effects.shadow.intensity) || 0) * 0.2;
+    const shadow = ids.includes("shadow") ? effects.shadow : null;
+    if (shadow) {
+      ctx.shadowColor = shadow.color || "#101010";
+      ctx.shadowBlur = Math.max(0, Number(shadow.intensity) || 0) * 0.28;
+      ctx.shadowOffsetY = Math.max(0, Number(shadow.intensity) || 0) * 0.1;
     }
-    if (effects.glow?.enabled) {
-      ctx.shadowColor = effects.glow.color || "#ffd7b8";
-      ctx.shadowBlur = Math.max(0, Number(effects.glow.intensity) || 0) * 0.7;
+    if (ids.includes("bloom")) {
+      ctx.shadowColor = effects.bloom.color || "#ffd7b8";
+      ctx.shadowBlur = 12 + Math.max(0, Number(effects.bloom.intensity) || 0) * 0.5;
     }
-    if (effects.stroke?.enabled) {
-      const pad = Math.max(1, Math.min(20, Number(effects.stroke.thickness) || 5));
-      const off = document.createElement("canvas");
-      off.width = image.width + pad * 2;
-      off.height = image.height + pad * 2;
-      const octx = off.getContext("2d");
-      for (let a = 0; a < 8; a++) {
-        const angle = a * Math.PI / 4;
-        octx.drawImage(image, pad + Math.cos(angle) * pad, pad + Math.sin(angle) * pad);
-      }
-      octx.globalCompositeOperation = "source-in";
-      octx.fillStyle = effects.stroke.color || "#ffffff";
-      octx.fillRect(0, 0, off.width, off.height);
-      octx.globalCompositeOperation = "destination-over";
-      octx.drawImage(image, pad, pad);
-      ctx.drawImage(off, -width / 2 - pad * scale, -height / 2 - pad * scale, width + pad * 2 * scale, height + pad * 2 * scale);
-    } else if (effects.distort?.enabled) {
-      const rows = 36;
-      const strength = Math.max(0, Math.min(1, Number(effects.distort.intensity) / 100 || 0.2));
-      const sliceHeight = image.height / rows;
-      for (let row = 0; row < rows; row++) {
-        const sourceY = row * sliceHeight;
-        const offset = Math.sin(now / 95 + row * 0.42) * strength * 18 * scale;
-        ctx.drawImage(image, 0, sourceY, image.width, sliceHeight + 1, -width / 2 + offset, -height / 2 + sourceY * scale, width, sliceHeight * scale + 1);
-      }
-    } else {
-      ctx.drawImage(image, -width / 2, -height / 2, width, height);
-    }
+    const px = sprite.pad * scale;
+    this.drawEffectSprite(ctx, sprite, -width / 2 - px, -height / 2 - px, width + px * 2, height + px * 2, ids, now);
     ctx.restore();
   }
 
-  drawAccessories(ctx, W, H, now) {
-    const motion = this.avatarMotion || { centerX: W / 2, centerY: H / 2, rotation: 0, scaleX: 1, scaleY: 1 };
+  drawAccessories(ctx, W, H, now, expression = this.state) {
+    const motion = this.avatarMotion || { centerX: W / 2, centerY: H / 2, rotation: 0, scaleX: 1, scaleY: 1, shakeX: 0, shakeY: 0 };
     const effects = this.preferences.effects || {};
     for (const item of this.accessories) {
       const image = item.image;
       if (!image?.complete || !image.naturalWidth) continue;
+      const ids = this.activeEffects(expression, "accessories", item);
       const x = (Number(item.x ?? 0.5) - 0.5) * W;
       const y = (Number(item.y ?? 0.5) - 0.5) * H;
       const width = Math.max(0.01, Math.min(1, Number(item.w) || 0.18)) * W;
       const height = Math.max(0.01, Math.min(1, Number(item.h) || 0.18)) * H;
       const followsAvatar = item.follow !== false;
+      const sprite = this.effectSprite(image, ids);
       ctx.save();
       if (followsAvatar) {
         ctx.translate(motion.centerX, motion.centerY);
@@ -260,22 +381,24 @@ export class AvatarRenderer {
         ctx.scale(motion.scaleX, motion.scaleY);
         ctx.translate(x, y);
       } else {
-        ctx.translate(x + W / 2, y + H / 2);
-      }
-      if (item.effectsEnabled !== false && effects.filter?.enabled) {
-        ctx.filter = `hue-rotate(${Number(effects.filter.hue) || 0}deg) saturate(${Number(effects.filter.saturation) || 100}%) brightness(${Number(effects.filter.brightness) || 100}%) contrast(${Number(effects.filter.contrast) || 100}%) grayscale(${Number(effects.filter.grayscale) || 0}%) sepia(${Number(effects.filter.sepia) || 0}%)`;
-      }
-      if (item.effectsEnabled !== false && effects.shadow?.enabled) {
-        ctx.shadowColor = effects.shadow.color || "#101010";
-        ctx.shadowBlur = Math.max(0, Number(effects.shadow.intensity) || 0);
-        ctx.shadowOffsetY = Math.max(0, Number(effects.shadow.intensity) || 0) * 0.2;
-      }
-      if (item.effectsEnabled !== false && effects.glow?.enabled) {
-        ctx.shadowColor = effects.glow.color || "#ffd7b8";
-        ctx.shadowBlur = Math.max(0, Number(effects.glow.intensity) || 0) * 0.7;
+        const shake = ids.includes("shake") ? Math.max(0, Math.min(1, Number(effects.shake.intensity) / 100 || 0.55)) : 0;
+        const shakeX = shake ? Math.sin(now / 19) * Math.cos(now / 31) * shake * 24 : 0;
+        const shakeY = shake ? Math.cos(now / 17) * Math.sin(now / 27) * shake * 24 : 0;
+        ctx.translate(x + W / 2 + shakeX, y + H / 2 + shakeY);
       }
       if (item.mirror) ctx.scale(-1, 1);
-      ctx.drawImage(image, -width / 2, -height / 2, width, height);
+      if (ids.includes("shadow")) {
+        ctx.shadowColor = effects.shadow.color || "#101010";
+        ctx.shadowBlur = Math.max(0, Number(effects.shadow.intensity) || 0) * 0.28;
+        ctx.shadowOffsetY = Math.max(0, Number(effects.shadow.intensity) || 0) * 0.1;
+      }
+      if (ids.includes("bloom")) {
+        ctx.shadowColor = effects.bloom.color || "#ffd7b8";
+        ctx.shadowBlur = 12 + Math.max(0, Number(effects.bloom.intensity) || 0) * 0.5;
+      }
+      const px = sprite.pad * (width / Math.max(1, sprite.width));
+      const py = sprite.pad * (height / Math.max(1, sprite.height));
+      this.drawEffectSprite(ctx, sprite, -width / 2 - px, -height / 2 - py, width + px * 2, height + py * 2, ids, now);
       ctx.restore();
     }
   }
