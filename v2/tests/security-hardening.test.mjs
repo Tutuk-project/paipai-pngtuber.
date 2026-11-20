@@ -140,3 +140,68 @@ test("collaboration and OBS snapshots pass profile preferences and active-charac
   assert.match(app, /entry\.renderer\.setPreferences\(preferences\)/);
   assert.match(overlay, /renderer\.setPreferences\(preferences\)/);
 });
+
+
+test("legacy global Visual Effect setting enables configured effect objects without per-effect enabled flags", async () => {
+  const { normalizeEffects } = await import("../src/avatar-renderer.js");
+  const legacy = normalizeEffects({
+    enabled: true,
+    bloom: { intensity: 55, color: "#ffd7b8" },
+    filter: { intensity: 40 },
+    shake: { enabled: false, intensity: 20 }
+  });
+  assert.equal(legacy.enabled, true);
+  assert.equal(legacy.bloom.enabled, true);
+  assert.equal(legacy.filter.enabled, true);
+  assert.equal(legacy.stroke.enabled, false);
+  assert.equal(legacy.shake.enabled, false);
+  const disabled = normalizeEffects({ enabled: false, bloom: { intensity: 55 } });
+  assert.equal(disabled.bloom.enabled, false);
+});
+
+test("GO Collaboration opens Host/Join chooser even while a personal Solo OBS room is restored", () => {
+  const app = read("src/app.js");
+  const chooser = app.match(/function openRoomChooser\(\)[\s\S]*?function showHostForm/)?.[0] || "";
+  assert.match(chooser, /currentRoom && currentRoom\.purpose !== "personal_overlay"/);
+  assert.match(chooser, /currentRoom\?\.purpose === "personal_overlay"/);
+  assert.match(chooser, /hostRoomChoice/);
+  assert.match(chooser, /joinRoomChoice/);
+});
+
+test("GO Collaboration shared stage uses a dedicated landscape canvas", () => {
+  const app = read("src/app.js");
+  const stage = app.match(/function renderRoomParticipants\(\)[\s\S]*?function drawRoomStageFrame/)?.[0] || "";
+  assert.match(stage, /const width = 1920/);
+  assert.match(stage, /const height = 1080/);
+  assert.match(stage, /16 \/ 9/);
+  const overlay = read("src/overlay.js");
+  assert.match(overlay, /isCollaborationRoom\s*=\s*roomPurpose === "collaboration"/);
+});
+
+test("room layout sliders update the local member renderer immediately", () => {
+  const app = read("src/app.js");
+  const controls = app.match(/function renderRoomControls\(\)[\s\S]*?async function subscribeRoom/)?.[0] || "";
+  const stage = app.match(/function renderRoomParticipants\(\)[\s\S]*?function drawRoomStageFrame/)?.[0] || "";
+  assert.match(controls, /ownMember\.overrides = \{ \.\.\.\(ownMember\.overrides \|\| \{\}\), \[item\.key\]: value \}/);
+  assert.match(stage, /member\.user_id === currentUser\.id[\s\S]*?\.\.\.roomOverrides/);
+});
+
+test("Solo OBS overlay keeps its canvas clean while starting invisible local mic capture", () => {
+  const overlay = read("src/overlay.js");
+  const html = read("overlay.html");
+  assert.match(overlay, /import \{ AudioEngine \} from "\.\/audio-engine\.js"/);
+  assert.match(overlay, /startInvisibleSoloMicrophone/);
+  assert.match(overlay, /roomPurpose !== "personal_overlay"/);
+  assert.match(overlay, /updateLocalMicState/);
+  assert.doesNotMatch(html, /<button\b/i);
+  assert.match(html, /<canvas id="stage"/);
+});
+
+test("overlay API returns room purpose for Solo or Collaboration rendering", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const start = edge.indexOf('if (action === "overlay_connect")');
+  const end = edge.indexOf("return json({ ok: true, room:", start);
+  const handler = edge.slice(start, end > start ? end + 120 : undefined);
+  assert.match(handler, /select\("id,status,purpose,overlay_token_hash/);
+  assert.match(handler, /purpose: room\.purpose/);
+});
