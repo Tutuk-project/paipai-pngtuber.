@@ -87,13 +87,13 @@ test("accessory mirror and visual effects are applied only when enabled", () => 
   const ctx = makeContext();
   const renderer = makeRenderer(
     [{ image, x: 0.5, y: 0.5, w: 0.2, h: 0.2, follow: false, mirror: true, effectsEnabled: true }],
-    { filter: { enabled: true, hue: 25 }, glow: { enabled: true, color: "#fff", intensity: 12 } }
+    { filter: { enabled: true, filter: { hue: 25 } }, bloom: { enabled: true, color: "#fff", intensity: 12 } }
   );
   renderer.drawAccessories(ctx, 200, 160, 0);
   assert.ok(ctx.calls.some(call => call[0] === "scale" && call[1] === -1 && call[2] === 1));
   assert.match(ctx.filter, /hue-rotate\(25deg\)/);
   assert.equal(ctx.shadowColor, "#fff");
-  assert.ok(Math.abs(ctx.shadowBlur - 8.4) < 1e-9);
+  assert.equal(ctx.shadowBlur, 18);
 
   const clean = makeContext();
   makeRenderer([{ image, follow: false, effectsEnabled: false, mirror: false }], { filter: { enabled: true } }).drawAccessories(clean, 200, 160, 0);
