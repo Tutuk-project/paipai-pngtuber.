@@ -669,6 +669,17 @@ Deno.serve(async (req) => {
       const mime = String(body.mime_type || "");
       const size = Number(body.size_bytes);
       if (storagePath.length > 512 || !storagePath.startsWith(`${user.id}/characters/default/accessories/`) || storagePath.split("/").some(part => !part || part === "." || part === "..") || !["image/png", "image/webp"].includes(mime) || !Number.isSafeInteger(size) || size < 1 || size > 8388608) return json({ ok: false, error: "Accessory metadata is invalid." }, 400);
+      const pathParts = storagePath.split("/");
+      const fileName = pathParts.pop() || "";
+      const folderPath = pathParts.join("/");
+      const { data: storedFiles, error: storageLookupError } = await db.storage.from("vio-studio-assets").list(folderPath, { search: fileName, limit: 100 });
+      if (storageLookupError) throw storageLookupError;
+      const storedFile = (storedFiles || []).find((file: any) => file.name === fileName);
+      if (!storedFile) return json({ ok: false, error: "Uploaded accessory object was not found in storage." }, 409);
+      const storedSize = Number(storedFile.metadata?.size ?? storedFile.metadata?.contentLength);
+      if (Number.isFinite(storedSize) && storedSize !== size) return json({ ok: false, error: "Uploaded accessory size does not match its metadata." }, 409);
+      const storedMime = String(storedFile.metadata?.mimetype || storedFile.metadata?.contentType || "");
+      if (storedMime && storedMime !== mime) return json({ ok: false, error: "Uploaded accessory MIME type does not match its metadata." }, 409);
       let { data: character, error: characterError } = await db.from("vio_characters").select("id").eq("user_id", user.id).eq("name", "Default").maybeSingle();
       if (characterError) throw characterError;
       if (!character) {
