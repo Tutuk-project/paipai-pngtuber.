@@ -43,3 +43,30 @@ test("OBS overlay API rejects expired rooms before registering overlay devices",
   assert.match(handler, /getTime\(\) <= Date\.now\(\)/);
   assert.ok(handler.indexOf("expires_at") < handler.indexOf('from("vio_overlay_devices")'));
 });
+
+
+test("character accessories have owner-scoped metadata and cloud lifecycle actions", () => {
+  const sql = read("supabase/migrations/003_vio_character_accessories.sql");
+  const edge = read("supabase/functions/vio-api/index.ts");
+  for (const column of ["storage_path", "mime_type", "size_bytes", "x", "y", "w", "h", "mirror", "follow_avatar", "effects_enabled"]) {
+    assert.match(sql, new RegExp("\\b" + column + "\\b"));
+  }
+  assert.match(sql, /create policy vio_accessories_read_self/i);
+  assert.match(sql, /create policy vio_accessories_write_self/i);
+  for (const action of ["record_accessory", "update_accessory", "delete_accessory", "my_assets"]) {
+    assert.ok(edge.includes('action === "' + action + '"'), "missing accessory action " + action);
+  }
+  assert.match(edge, /vio_character_accessories/);
+});
+
+test("accessories are included in collaboration and OBS snapshots and rendered by the shared avatar renderer", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const app = read("src/app.js");
+  const overlay = read("src/overlay.js");
+  const renderer = read("src/avatar-renderer.js");
+  assert.match(edge, /vio_character_accessories\\(id,name,storage_path,bucket_id,x,y,w,h,mirror,follow_avatar,effects_enabled,sort_order\\)/);
+  assert.match(edge, /accessories: accessories\\.filter\\(Boolean\\)/);
+  assert.match(app, /avatarRenderer\\.setAccessories\\(characterAccessories\\)/);
+  assert.match(overlay, /renderer\\.setAccessories\\(member\\.accessories \\|\\| \\[\\]\\)/);
+  assert.match(renderer, /item\\.follow !== false/);
+});
