@@ -380,8 +380,8 @@ function renderSettings(menuId) {
     const rawEffects = prefs.effects || {};
     const anyEffectEnabled = effectKeys.some(([key]) => (rawEffects[key] || (key === "bloom" ? rawEffects.glow : null))?.enabled);
     const effects = {
-      enabled: rawEffects.enabled ?? anyEffectEnabled,
-      stickerEffectsEnabled: rawEffects.stickerEffectsEnabled ?? true
+      enabled: typeof rawEffects.enabled === "boolean" ? rawEffects.enabled : anyEffectEnabled,
+      stickerEffectsEnabled: rawEffects.stickerEffectsEnabled !== false
     };
     for (const [key] of effectKeys) {
       const legacy = key === "bloom" && !rawEffects.bloom ? rawEffects.glow : rawEffects[key];
@@ -390,7 +390,13 @@ function renderSettings(menuId) {
         thickness: 8, invert: false, states: effectStates.map(([value]) => value),
         targets: ["avatar", "accessories"], ...(legacy || {})
       };
-      if (key === "filter") effects[key].filter = { hue: 0, saturation: 100, brightness: 100, contrast: 100, invert: 0, grayscale: 0, sepia: 0, ...(legacy?.filter || {}) };
+      effects[key].states = Array.isArray(effects[key].states)
+        ? effects[key].states.map(state => state === "talkingBlink" ? "talking_blink" : state).filter(state => effectStates.some(([value]) => value === state))
+        : effectStates.map(([value]) => value);
+      effects[key].targets = Array.isArray(effects[key].targets)
+        ? effects[key].targets.filter(target => target === "avatar" || target === "accessories")
+        : ["avatar", "accessories"];
+      if (key === "filter") effects[key].filter = { hue: 0, saturation: 100, brightness: 100, contrast: 100, invert: 0, grayscale: 0, sepia: 0, ...(legacy?.filter && typeof legacy.filter === "object" ? legacy.filter : {}) };
     }
     const globalField = document.createElement("div"); globalField.className = "setting-field";
     const globalLabel = document.createElement("label"); globalLabel.textContent = "Aktifkan mesin efek";
