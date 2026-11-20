@@ -268,6 +268,15 @@ test("Admin support profile edits cannot bypass background cleanup tracking", ()
   assert.ok(app.includes("File background lama masih menunggu penghapusan Storage"));
 });
 
+test("legacy talking squash is configurable and inherited by following accessories", () => {
+  const renderer = read("src/avatar-renderer.js");
+  const app = read("src/app.js");
+  assert.ok(renderer.includes("squash: 0.07"));
+  assert.ok(renderer.includes("scaleX: squashX, scaleY: squashY"));
+  assert.ok(renderer.includes("ctx.scale((p.mirror === false ? 1 : -1) * squashX, squashY)"));
+  assert.ok(app.includes('"squash", "Talking squash"'));
+});
+
 test("portrait and custom output resolutions are shared by editor, room and OBS", () => {
   const app = read("src/app.js");
   const overlay = read("src/overlay.js");
