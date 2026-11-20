@@ -246,13 +246,15 @@ function renderSettings(menuId) {
     const fields = [
       ["bounce", "Talking bounce", 0, 0.12, 0.005],
       ["squash", "Talking squash", 0, 0.25, 0.005],
+      ["bounceMs", "Bounce duration (ms)", 120, 600, 10],
+      ["idleBob", "Idle bob", 0, 0.03, 0.001],
       ["sway", "Sway (degrees)", 0, 18, 0.5],
       ["breathing", "Breathing (%)", 0, 8, 0.25],
       ["blinkRate", "Blink rate", 1, 12, 0.5],
       ["fps", "Preview FPS", 10, 60, 5]
     ];
     for (const [key, label, min, max, step] of fields) {
-      const field = settingField(label, `effect_${key}`, String(prefs[key] ?? ({bounce:0.035,squash:0.07,sway:0,breathing:0,blinkRate:4,fps:30}[key])), "", "range");
+      const field = settingField(label, `effect_${key}`, String(prefs[key] ?? ({bounce:0.035,squash:0.07,bounceMs:240,idleBob:0.006,sway:0,breathing:0,blinkRate:4,fps:30}[key])), "", "range");
       const input = field.querySelector("input"); input.min = String(min); input.max = String(max); input.step = String(step);
       input.addEventListener("input", () => { prefs[key] = Number(input.value); drawPreview(); });
       grid.append(field);
