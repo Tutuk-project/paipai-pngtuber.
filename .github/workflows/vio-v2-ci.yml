@@ -29,6 +29,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ github.head_ref || github.ref }}
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Type-check Supabase Edge Function
+        working-directory: v2
+        run: deno check --no-lock supabase/functions/vio-api/index.ts
       - name: Check JavaScript syntax and run regression tests
         working-directory: v2
         run: |
