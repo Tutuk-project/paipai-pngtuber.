@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AvatarRenderer, fisheyeWarpPixels } from "../src/avatar-renderer.js";
+import { AvatarRenderer, averageVisibleColor, fisheyeWarpPixels } from "../src/avatar-renderer.js";
 
 function makeContext() {
   const calls = [];
@@ -29,6 +29,17 @@ function makeRenderer(items, effects = {}) {
 }
 
 const image = { complete: true, naturalWidth: 100, width: 100, height: 100 };
+
+test("bloom dominant-color sampling ignores transparent pixels and has a fallback", () => {
+  const pixels = new Uint8ClampedArray([
+    255, 0, 0, 255,
+    0, 0, 0, 0,
+    0, 100, 200, 255,
+    0, 0, 0, 0
+  ]);
+  assert.equal(averageVisibleColor(pixels), "rgb(128,50,100)");
+  assert.equal(averageVisibleColor(new Uint8ClampedArray(8), "#123456"), "#123456");
+});
 
 test("Eagle Eye fisheye mapping preserves the center and is intensity controlled", () => {
   const width = 5, height = 5;
