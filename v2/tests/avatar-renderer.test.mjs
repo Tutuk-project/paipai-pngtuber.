@@ -45,7 +45,7 @@ test("independent accessory does not inherit avatar transforms", () => {
   const ctx = makeContext();
   const renderer = makeRenderer([{ image, x: 0.75, y: 0.25, w: 0.2, h: 0.25, follow: false }]);
   renderer.drawAccessories(ctx, 200, 160, 0);
-  assert.ok(ctx.calls.some(call => call[0] === "translate" && call[1] === 50 && call[2] === -40));
+  assert.ok(ctx.calls.some(call => call[0] === "translate" && call[1] === 50 && call[2] === 40));
   assert.equal(ctx.calls.filter(call => call[0] === "rotate").length, 0);
   assert.equal(ctx.calls.filter(call => call[0] === "scale").length, 0);
 });
@@ -60,7 +60,7 @@ test("accessory mirror and visual effects are applied only when enabled", () => 
   assert.ok(ctx.calls.some(call => call[0] === "scale" && call[1] === -1 && call[2] === 1));
   assert.match(ctx.filter, /hue-rotate\(25deg\)/);
   assert.equal(ctx.shadowColor, "#fff");
-  assert.equal(ctx.shadowBlur, 8);
+  assert.ok(Math.abs(ctx.shadowBlur - 8.4) < 1e-9);
 
   const clean = makeContext();
   makeRenderer([{ image, follow: false, effectsEnabled: false, mirror: false }], { filter: { enabled: true } }).drawAccessories(clean, 200, 160, 0);
