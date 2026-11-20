@@ -600,6 +600,7 @@ Deno.serve(async (req) => {
       if (targetError) throw targetError;
       if (target.username === "paipai77" || target.role === "admin") return json({ ok: false, error: "Admin assets are protected from support-view deletion." }, 403);
       const assetType = String(body.asset_type || "expression");
+      let cleanupPending = false;
       if (assetType === "background") {
         const { data: profileRow, error: profileError } = await db.from("vio_profiles").select("preferences").eq("user_id", targetId).maybeSingle();
         if (profileError) throw profileError;
@@ -620,7 +621,8 @@ Deno.serve(async (req) => {
           throw saveError;
         }
         const cleanup = await processStorageCleanup(db, job);
-        await audit(db, admin.id, targetId, "admin_background_deleted", { cleanup_pending: !cleanup.ok, support_session_id: session.id });
+        cleanupPending = !cleanup.ok;
+        await audit(db, admin.id, targetId, "admin_background_deleted", { cleanup_pending: cleanupPending, support_session_id: session.id });
       } else if (assetType === "accessory") {
         const { data: asset, error: assetError } = await db.from("vio_character_accessories").select("id,bucket_id,storage_path,name").eq("id", assetId).eq("user_id", targetId).single();
         if (assetError) throw assetError;
@@ -635,7 +637,8 @@ Deno.serve(async (req) => {
           throw rowError;
         }
         const cleanup = await processStorageCleanup(db, job);
-        await audit(db, admin.id, targetId, "admin_accessory_deleted", { asset_id: assetId, name: asset.name, cleanup_pending: !cleanup.ok, support_session_id: session.id });
+        cleanupPending = !cleanup.ok;
+        await audit(db, admin.id, targetId, "admin_accessory_deleted", { asset_id: assetId, name: asset.name, cleanup_pending: cleanupPending, support_session_id: session.id });
       } else {
         const { data: asset, error: assetError } = await db.from("vio_character_assets").select("id,bucket_id,storage_path,expression").eq("id", assetId).eq("user_id", targetId).single();
         if (assetError) throw assetError;
@@ -650,9 +653,10 @@ Deno.serve(async (req) => {
           throw rowError;
         }
         const cleanup = await processStorageCleanup(db, job);
-        await audit(db, admin.id, targetId, "admin_asset_deleted", { asset_id: assetId, expression: asset.expression, cleanup_pending: !cleanup.ok, support_session_id: session.id });
+        cleanupPending = !cleanup.ok;
+        await audit(db, admin.id, targetId, "admin_asset_deleted", { asset_id: assetId, expression: asset.expression, cleanup_pending: cleanupPending, support_session_id: session.id });
       }
-      return json({ ok: true });
+      return json({ ok: true, cleanup_pending: cleanupPending });
     }
 
     if (action === "my_assets") {
