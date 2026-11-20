@@ -35,7 +35,7 @@ jobs:
           deno-version: v2.x
       - name: Type-check Supabase Edge Function
         working-directory: v2
-        run: deno check --no-lock supabase/functions/vio-api/index.ts
+        run: deno check --node-modules-dir=auto --no-lock supabase/functions/vio-api/index.ts
       - name: Set up Python for PostgreSQL migration validation
         uses: actions/setup-python@v5
         with:
