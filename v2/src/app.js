@@ -546,6 +546,7 @@ function buildEffectDefaults(raw = {}) {
     const storedTargets = Array.isArray(old.targets) ? old.targets : ["avatar", "accessories"];
     effects[key] = {
       ...defaults, ...old,
+      enabled: typeof old.enabled === "boolean" ? old.enabled : (effects.enabled && Object.keys(old).length > 0),
       states: storedStates.includes("all") ? states : storedStates.filter(value => states.includes(value)),
       targets: storedTargets.includes("all") ? ["avatar", "accessories"] : storedTargets.filter(value => ["avatar","accessories"].includes(value))
     };
@@ -1477,7 +1478,9 @@ function openRoomChooser() {
   if (sideButton) { sideButton.textContent = "›"; sideButton.title = "Expand sidebar"; }
   activeMenu = "collaboration";
   renderNavigation();
-  if (currentRoom) {
+  // A personal_overlay room is only the Solo OBS transport room. It must
+  // never bypass the Host/Join chooser for GO Collaboration.
+  if (currentRoom && currentRoom.purpose !== "personal_overlay") {
     $("app").classList.add("in-room");
     showView("collaborationView");
     $("pageTitle").textContent = "GO Collaboration";
@@ -1487,7 +1490,10 @@ function openRoomChooser() {
   const dialog = $("roomDialog");
   $("roomDialogTitle").textContent = "GO Collaboration";
   const body = $("roomDialogBody");
-  body.innerHTML = `<div class="setting-grid"><button id="hostRoomChoice" class="button button-primary" type="button">＋ HOST</button><button id="joinRoomChoice" class="button" type="button">↳ JOIN</button></div><p class="muted">Host menentukan kapasitas 1–4 orang, termasuk host. Setiap peserta membawa karakter dan preferensi profilnya sendiri.</p>`;
+  const soloNotice = currentRoom?.purpose === "personal_overlay"
+    ? "<p class=\"muted\">Memilih Host atau Join akan menutup sesi Solo OBS aktif pada perangkat ini.</p>"
+    : "";
+  body.innerHTML = `<div class="setting-grid"><button id="hostRoomChoice" class="button button-primary" type="button">＋ HOST</button><button id="joinRoomChoice" class="button" type="button">↳ JOIN</button></div><p class="muted">Host menentukan kapasitas 1–4 orang, termasuk host. Setiap peserta membawa karakter dan preferensi profilnya sendiri.</p>${soloNotice}`;
   $("roomDialogSubmit").hidden = true;
   body.querySelector("#hostRoomChoice").addEventListener("click", showHostForm);
   body.querySelector("#joinRoomChoice").addEventListener("click", showJoinForm);
@@ -1634,6 +1640,8 @@ function renderRoomControls(options = {}) {
     range.addEventListener("input", () => {
       const value = Number(range.value);
       roomOverrides[item.key] = value;
+      const ownMember = roomMembers.find(member => member.user_id === currentUser.id);
+      if (ownMember) ownMember.overrides = { ...(ownMember.overrides || {}), [item.key]: value };
       output.textContent = item.format(value);
       if (item.key === "sensitivity" || item.key === "boostDb") audio?.setOptions({ [item.key]: value });
       if (["scale", "x", "y"].includes(item.key)) renderRoomParticipants();
@@ -1642,6 +1650,8 @@ function renderRoomControls(options = {}) {
       const value = Number(range.value);
       try {
         await api("set_room_override", { room_id: currentRoom.id, overrides: { [item.key]: value } });
+        const ownMember = roomMembers.find(member => member.user_id === currentUser.id);
+        if (ownMember) ownMember.overrides = { ...(ownMember.overrides || {}), [item.key]: value };
         if (["scale", "x", "y"].includes(item.key)) await broadcastPlayerLayout();
       } catch (error) {
         showToast(`${item.label} gagal disimpan: ${error.message}`, "error");
@@ -1658,6 +1668,8 @@ function renderRoomControls(options = {}) {
   layoutReset.textContent = "Reset avatar layout";
   layoutReset.addEventListener("click", async () => {
     roomOverrides.scale = 1; roomOverrides.x = 0; roomOverrides.y = 0;
+    const ownMember = roomMembers.find(member => member.user_id === currentUser.id);
+    if (ownMember) ownMember.overrides = { ...(ownMember.overrides || {}), scale: 1, x: 0, y: 0 };
     renderRoomControls();
     renderRoomParticipants();
     try {
@@ -1793,12 +1805,12 @@ async function loadRoomMembers() {
 function renderRoomParticipants() {
   const canvas = $("roomStage");
   const visible = roomMembers.slice(0, 4);
-  const hostMember = visible.find(member => member.is_host) || visible[0];
-  const output = hostMember?.preferences || profilePreferences;
-  const width = Math.max(320, Math.min(3840, Math.round(Number(output.outputWidth) || 1080)));
-  const height = Math.max(320, Math.min(3840, Math.round(Number(output.outputHeight) || 1920)));
+  // Collaboration uses its own shared landscape canvas; it must not inherit
+  // a participant's portrait Solo/stream profile resolution.
+  const width = 1920;
+  const height = 1080;
   if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
-  canvas.style.aspectRatio = `${width} / ${height}`;
+  canvas.style.aspectRatio = "16 / 9";
   const ctx = canvas.getContext("2d");
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   const slotWidth = canvas.width / Math.max(1, visible.length);
@@ -1851,7 +1863,9 @@ function renderRoomParticipants() {
       entry.canvas.width = playerWidth;
       entry.canvas.height = playerHeight;
     }
-    const overrides = member.overrides || {};
+    const overrides = member.user_id === currentUser.id
+      ? { ...(member.overrides || {}), ...roomOverrides }
+      : (member.overrides || {});
     const preferences = {
       ...(member.preferences || {}),
       scale: overrides.scale ?? member.preferences?.scale ?? 1,
