@@ -578,15 +578,56 @@ Deno.serve(async (req) => {
       const { data: target, error: targetError } = await db.from("vio_app_users").select("id,username,role").eq("id", targetId).single();
       if (targetError) throw targetError;
       if (target.username === "paipai77" || target.role === "admin") return json({ ok: false, error: "Admin profile cannot be modified from support view." }, 403);
-      const preferences = body.preferences && typeof body.preferences === "object" && !Array.isArray(body.preferences) ? body.preferences as Json : {};
+      const preferences = body.preferences && typeof body.preferences === "object" && !Array.isArray(body.preferences) ? JSON.parse(JSON.stringify(body.preferences)) as Record<string, any> : {};
       if (JSON.stringify(preferences).length > 24000) return json({ ok: false, error: "Profile settings are too large." }, 413);
+      const { data: currentProfile, error: currentProfileError } = await db.from("vio_profiles").select("preferences").eq("user_id", targetId).maybeSingle();
+      if (currentProfileError) throw currentProfileError;
+      const previousBackground = (currentProfile?.preferences as any)?.background || {};
+      const requestedBackground = preferences.background && typeof preferences.background === "object" ? { ...preferences.background } : {};
+      const requestedPath = String(requestedBackground.storage_path || "");
+      if (requestedPath && (requestedPath !== previousBackground.storage_path || requestedBackground.bucket_id !== previousBackground.bucket_id || requestedBackground.bucket_id !== "vio-backgrounds")) {
+        return json({ ok: false, error: "Support View cannot replace background files. Upload or clear the background through the dedicated asset controls." }, 400);
+      }
+      let backgroundCleanupJob: any = null;
+      if (previousBackground.storage_path && !requestedPath) {
+        backgroundCleanupJob = await enqueueStorageCleanup(db, "vio-backgrounds", previousBackground.storage_path, admin.id, targetId, "admin_support_profile_background_clear");
+        const mode = ["solid", "gradient", "transparent"].includes(String(requestedBackground.mode)) ? requestedBackground.mode : "transparent";
+        preferences.background = { ...requestedBackground, mode };
+        delete preferences.background.src;
+        delete preferences.background.storage_path;
+        delete preferences.background.bucket_id;
+        delete preferences.background.mime_type;
+        delete preferences.background.size_bytes;
+      } else if (requestedPath) {
+        preferences.background = {
+          ...requestedBackground,
+          storage_path: previousBackground.storage_path,
+          bucket_id: "vio-backgrounds",
+          mime_type: previousBackground.mime_type,
+          size_bytes: previousBackground.size_bytes
+        };
+        delete preferences.background.src;
+      } else if (preferences.background && typeof preferences.background === "object") {
+        delete preferences.background.src;
+      }
       const displayName = String(body.display_name || target.username).trim().slice(0, 48);
       const { error: accountError } = await db.from("vio_app_users").update({ display_name: displayName }).eq("id", targetId);
-      if (accountError) throw accountError;
+      if (accountError) {
+        if (backgroundCleanupJob) await cancelStorageCleanup(db, backgroundCleanupJob.id, "Admin profile account update failed");
+        throw accountError;
+      }
       const { error: profileError } = await db.from("vio_profiles").upsert({ user_id: targetId, preferences, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
-      if (profileError) throw profileError;
-      await audit(db, admin.id, targetId, "admin_profile_updated", { support_session_id: session.id });
-      return json({ ok: true });
+      if (profileError) {
+        if (backgroundCleanupJob) await cancelStorageCleanup(db, backgroundCleanupJob.id, "Admin profile update failed");
+        throw profileError;
+      }
+      let cleanupPending = false;
+      if (backgroundCleanupJob) {
+        const cleanup = await processStorageCleanup(db, backgroundCleanupJob);
+        cleanupPending = !cleanup.ok;
+      }
+      await audit(db, admin.id, targetId, "admin_profile_updated", { cleanup_pending: cleanupPending, support_session_id: session.id });
+      return json({ ok: true, cleanup_pending: cleanupPending });
     }
 
     if (action === "admin_delete_asset") {
