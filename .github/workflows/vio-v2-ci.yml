@@ -50,7 +50,7 @@ jobs:
         run: npm install --no-audit --no-fund
       - name: Install Chromium for renderer visual tests
         working-directory: v2
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
       - name: Run browser renderer visual smoke test
         working-directory: v2
         run: node tests/browser-renderer.visual.mjs
