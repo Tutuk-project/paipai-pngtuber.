@@ -156,6 +156,31 @@ test("accessories can be selected and dragged directly on the avatar canvas", ()
   assert.ok(app.includes("selectedAccessoryId = item.id"));
 });
 
+test("accessory deletion queues durable Storage cleanup before deleting metadata", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const migration = read("supabase/migrations/005_vio_storage_cleanup_queue.sql");
+  const userDelete = edge.slice(edge.indexOf('if (action === "delete_accessory")'), edge.indexOf('if (action === "issue_room_overlay")'));
+  const adminDelete = edge.slice(edge.indexOf('if (action === "admin_delete_asset")'), edge.indexOf('if (action === "my_assets")'));
+  assert.ok(migration.includes("create table if not exists public.vio_storage_cleanup_queue"));
+  assert.ok(migration.includes("unique (bucket_id, storage_path)"));
+  assert.ok(migration.includes("enable row level security"));
+  assert.ok(edge.includes("async function enqueueStorageCleanup"));
+  assert.ok(edge.includes("async function processStorageCleanup"));
+  assert.ok(userDelete.indexOf("enqueueStorageCleanup") < userDelete.indexOf('.delete().eq("id", accessoryId)'));
+  assert.ok(userDelete.includes("cleanup_pending: !cleanup.ok"));
+  assert.ok(adminDelete.includes("admin_support_accessory_delete"));
+  assert.ok(edge.includes('action === "admin_retry_storage_cleanup"'));
+  assert.ok(edge.includes("limit(25)"));
+});
+
+test("Admin dashboard exposes pending Storage cleanup retry", () => {
+  const app = read("src/app.js");
+  const edge = read("supabase/functions/vio-api/index.ts");
+  assert.ok(app.includes("Retry pending Storage cleanup"));
+  assert.ok(app.includes('api("admin_retry_storage_cleanup")'));
+  assert.ok(edge.includes("cleanup_pending_count: cleanupQ.count || 0"));
+});
+
 test("portrait and custom output resolutions are shared by editor, room and OBS", () => {
   const app = read("src/app.js");
   const overlay = read("src/overlay.js");
