@@ -29,7 +29,7 @@ The package currently lives under `/v2/` on the development branch only. The rep
 1. Copy `src/config.example.js` to `src/config.js`.
 2. Fill `supabaseUrl` and the public `sb_publishable_...` key from the existing Supabase project. Never use a secret/service-role key in this file.
 3. In Supabase Auth settings, enable Anonymous Sign-Ins. Anonymous auth creates a persistent device session; users who clear browser storage or change devices need a new one-time pairing code from Admin. CAPTCHA / Turnstile is not wired into this frontend yet: integrate and test a challenge-token flow before enabling mandatory CAPTCHA or exposing anonymous sign-in broadly.
-4. Review migrations `001_vio_studio_v2.sql`, `002_vio_studio_v2_security_hardening.sql`, and `003_vio_character_accessories.sql` against the existing project before applying them. They add v2 tables/policies and the private `vio-studio-assets` bucket. They deliberately leave v1.0 tables and the `pngtuber-assets` bucket unchanged. None of these migrations has been applied to live Supabase.
+4. Review and apply migrations `001_vio_studio_v2.sql` through `005_vio_storage_cleanup_queue.sql` in numerical order against the existing project. They add v2 tables/policies, accessory metadata, the private `vio-studio-assets` and `vio-backgrounds` buckets, and the server-only cleanup queue. They deliberately leave v1.0 tables and the `pngtuber-assets` bucket unchanged. None of these migrations has been applied to live Supabase.
 5. Set a long random Edge Function secret named `VIO_ADMIN_BOOTSTRAP_TOKEN`. Keep it private. It is used once to bootstrap the first `paipai77` Admin account.
 6. Deploy the Edge Function directory `supabase/functions/vio-api` as `vio-api`.
 7. Open `/v2/`, enter `paipai77` and the one-time bootstrap token. After the first successful Admin bootstrap, remove `VIO_ADMIN_BOOTSTRAP_TOKEN` from the function secrets and redeploy the function.
@@ -96,7 +96,8 @@ A modular `src/avatar-renderer.js` is wired into the v2 editor and OBS overlay. 
 
 ## 2026-11-20 Vio-Studio v2.0 checkpoints and CI
 
-- Latest checkpoint: `docs/CHECKPOINT-11-2026-11-20.md`.
+- Latest checkpoint: `docs/CHECKPOINT-12-2026-11-20.md`.
+- Previous checkpoint: `docs/CHECKPOINT-11-2026-11-20.md`.
 - Previous checkpoints: `docs/CHECKPOINT-10-2026-11-20.md`, `docs/CHECKPOINT-09-2026-11-20.md`, and `docs/CHECKPOINT-08-2026-11-20.md`.
 - GitHub Actions workflow: `.github/workflows/vio-v2-ci.yml`.
 - Latest verified run: `44736720899`, 34 tests passed, 0 failed, 0 skipped.
