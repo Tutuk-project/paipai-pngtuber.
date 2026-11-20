@@ -38,6 +38,21 @@ test("bloom dominant-color sampling ignores transparent pixels and has a fallbac
   assert.equal(averageVisibleColor(new Uint8ClampedArray(8), "#123456"), "#123456");
 });
 
+test("renderer prunes stale signed-URL images while retaining current avatar, accessory and background assets", () => {
+  const renderer = Object.create(AvatarRenderer.prototype);
+  const stale = { onload: () => {}, onerror: () => {} };
+  renderer.images = new Map([
+    ["avatar-current", {}], ["accessory-current", {}], ["background-current", {}], ["expired-signed-url", stale]
+  ]);
+  renderer.assets = { idle: "avatar-current" };
+  renderer.accessories = [{ src: "accessory-current" }];
+  renderer.backgroundImageSrc = "background-current";
+  renderer.pruneImageCache();
+  assert.deepEqual([...renderer.images.keys()].sort(), ["accessory-current", "avatar-current", "background-current"]);
+  assert.equal(stale.onload, null);
+  assert.equal(stale.onerror, null);
+});
+
 test("Eagle Eye fisheye mapping preserves the center and is intensity controlled", () => {
   const width = 5, height = 5;
   const source = new Uint8ClampedArray(width * height * 4);
