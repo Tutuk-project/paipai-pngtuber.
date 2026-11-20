@@ -378,7 +378,8 @@ export class AvatarRenderer {
       const followsAvatar = item.follow !== false;
       const sprite = this.effectSprite(image, ids);
       ctx.save();
-      ctx.filter = this.effectFilter(ids);
+      const accessoryFilter = this.effectFilter(ids);
+      if (accessoryFilter !== "none") ctx.filter = accessoryFilter;
       if (followsAvatar) {
         ctx.translate(motion.centerX, motion.centerY);
         ctx.rotate(motion.rotation);
