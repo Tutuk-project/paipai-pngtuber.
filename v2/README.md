@@ -29,9 +29,9 @@ The package currently lives under `/v2/` on the development branch only. The rep
 1. Copy `src/config.example.js` to `src/config.js`.
 2. Fill `supabaseUrl` and the public `sb_publishable_...` key from the existing Supabase project. Never use a secret/service-role key in this file.
 3. In Supabase Auth settings, enable Anonymous Sign-Ins. Anonymous auth creates a persistent device session; users who clear browser storage or change devices need a new one-time pairing code from Admin. CAPTCHA / Turnstile is not wired into this frontend yet: integrate and test a challenge-token flow before enabling mandatory CAPTCHA or exposing anonymous sign-in broadly.
-4. Review and apply migrations `001_vio_studio_v2.sql` through `006_vio_storage_cleanup_reference_guard.sql` in numerical order against the existing project. They add v2 tables/policies, accessory metadata, the private `vio-studio-assets` and `vio-backgrounds` buckets, the server-only cleanup queue, and database guards that serialize cleanup reservations against new metadata references. They deliberately leave v1.0 tables and the `pngtuber-assets` bucket unchanged. None of these migrations has been applied to live Supabase.
-5. Set a long random Edge Function secret named `VIO_ADMIN_BOOTSTRAP_TOKEN`. Keep it private. It is used once to bootstrap the first `paipai77` Admin account.
-6. Deploy the Edge Function directory `supabase/functions/vio-api` as `vio-api`.
+4. Create a **separate Supabase Development project** for v2. Review and apply migrations `001_vio_studio_v2.sql` through `006_vio_storage_cleanup_reference_guard.sql` there in numerical order. They add v2 tables/policies, accessory metadata, the private `vio-studio-assets` and `vio-backgrounds` buckets, the server-only cleanup queue, and database guards that serialize cleanup reservations against new metadata references. They deliberately leave v1.0 tables and the `pngtuber-assets` bucket unchanged. Never use the production project for this initial integration test; none of these migrations has been applied to Supabase Live.
+5. In the Development project only, set a long random Edge Function secret named `VIO_ADMIN_BOOTSTRAP_TOKEN`. Keep it private. It is used once to bootstrap the first `paipai77` Admin account.
+6. Deploy the Edge Function directory `supabase/functions/vio-api` as `vio-api` to the Development project only.
 7. Open `/v2/`, enter `paipai77` and the one-time bootstrap token. After the first successful Admin bootstrap, remove `VIO_ADMIN_BOOTSTRAP_TOKEN` from the function secrets and redeploy the function.
 8. From Admin, create User / Tester accounts and provide each new user the generated one-time device pairing code privately. Returning use on that device requires only their username. A new device needs a new pairing code from Admin. Admin can revoke all paired devices and issue a replacement code if access needs to be recovered.
 
@@ -53,8 +53,8 @@ The migration adds private-topic authorization policies for room members and OBS
 
 - Connect GitHub and add the package under `/v2/` without replacing root files.
 - Confirm repository rename and GitHub Pages source settings.
-- Apply SQL to the existing Supabase project after schema review.
-- Configure and deploy `vio-api`.
+- Configure the separate Supabase Development project, apply migrations 001–006 there, and deploy `vio-api` there only.
+- Complete runtime integration checks for Auth, Storage upload/signing/deletion/retry, account lifecycle, Realtime, and room membership before any production planning.
 - Complete renderer parity: background image/video import, custom resolution controls, direct accessory drag positioning, legacy per-state/per-target effect controls, and remaining v1.0 motion/effect behavior.
 - Load saved profile preferences and selected character from cloud on sign-in.
 - Expand the dedicated storage browser, user filtering/pagination and full audit-log history; current build already includes basic user/profile/asset inspection and the recent audit viewer.
@@ -96,10 +96,11 @@ A modular `src/avatar-renderer.js` is wired into the v2 editor and OBS overlay. 
 
 ## 2026-11-20 Vio-Studio v2.0 checkpoints and CI
 
-- Latest checkpoint: `docs/CHECKPOINT-34-2026-11-20.md`.
+- Latest checkpoint: `docs/CHECKPOINT-35-2026-11-20.md`.
 - Previous checkpoints: `docs/CHECKPOINT-17-2026-11-20.md`, `docs/CHECKPOINT-16-2026-11-20.md`, and `docs/CHECKPOINT-15-2026-11-20.md`.
 - Previous checkpoints: `docs/CHECKPOINT-10-2026-11-20.md`, `docs/CHECKPOINT-09-2026-11-20.md`, and `docs/CHECKPOINT-08-2026-11-20.md`.
 - GitHub Actions workflow: `.github/workflows/vio-v2-ci.yml`.
-- Previous verified run: `44745056028`, 53 tests passed, 0 failed, 0 skipped. Checkpoint 34 adds four backend-safety regression tests; the new CI result is pending verification.
+- Checkpoint 34 verified run: `44747638566`, 57 tests passed, 0 failed, 0 skipped.
+- Checkpoint 35 verified run: `44748939403`, 58 tests passed, 0 failed, 0 skipped; PostgreSQL 16 concurrency suite passed 4/4 scenarios.
 - Coverage includes security policy checks, expired-room Realtime checks, Admin bootstrap, accessory lifecycle/transforms/direct drag, collaboration animation, private background media validation/signed delivery, portrait/custom output dimensions, host-selected room resolution, mobile pixel-budget validation, and live asset-update broadcast wiring.
-- Migrations 001–004 and Edge Function updates remain development source only; they have not been applied/deployed to live Supabase.
+- Migrations 001–006 and Edge Function updates remain development source only; they have not been applied/deployed to any Supabase project.
