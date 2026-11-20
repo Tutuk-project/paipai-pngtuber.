@@ -90,3 +90,12 @@ test("my_assets only returns the selected character assets and includes its id",
   assert.match(handler, /eq\("character_id", characterId/);
   assert.match(handler, /active_character_id/);
 });
+
+test("accessory upload is scoped to the selected owned character, not a Default name", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const handler = edge.match(/if \(action === "record_accessory"\)[\s\S]*?if \(action === "update_accessory"\)/)?.[0] || "";
+  assert.match(handler, /body\.character_id/);
+  assert.match(handler, /expectedPrefix/);
+  assert.match(handler, /eq\("id", characterId\)\.eq\("user_id", user\.id\)/);
+  assert.doesNotMatch(handler, /characters\/default|eq\("name", "Default"\)/);
+});
