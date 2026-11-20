@@ -211,7 +211,10 @@ async function boot() {
         const seq = Number(payload.seq) || 0;
         if (seq && seq <= (stateSequences.get(payload.user_id) || 0)) return;
         if (seq) stateSequences.set(payload.user_id, seq);
-        if (localMicActive && payload.user_id === localMicUserId) return;
+        // Prefer the local OBS mic for "idle", but never suppress a Creator-side
+        // "talking" signal: CEF may report a live stream while failing to deliver
+        // real microphone samples or may be bound to a different input device.
+        if (localMicActive && payload.user_id === localMicUserId && payload.state !== "talking") return;
         states.set(payload.user_id, payload.state);
         render();
       })
