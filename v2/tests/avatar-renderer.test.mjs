@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AvatarRenderer } from "../src/avatar-renderer.js";
+import { AvatarRenderer, fisheyeWarpPixels } from "../src/avatar-renderer.js";
 
 function makeContext() {
   const calls = [];
@@ -29,6 +29,24 @@ function makeRenderer(items, effects = {}) {
 }
 
 const image = { complete: true, naturalWidth: 100, width: 100, height: 100 };
+
+test("Eagle Eye fisheye mapping preserves the center and is intensity controlled", () => {
+  const width = 5, height = 5;
+  const source = new Uint8ClampedArray(width * height * 4);
+  for (let i = 0; i < source.length; i += 4) {
+    source[i] = i / 4;
+    source[i + 1] = 120;
+    source[i + 2] = 220;
+    source[i + 3] = 255;
+  }
+  const unchanged = fisheyeWarpPixels(source, width, height, 0);
+  assert.deepEqual(unchanged, source);
+  const warped = fisheyeWarpPixels(source, width, height, 100);
+  const center = ((Math.floor(height / 2) * width) + Math.floor(width / 2)) * 4;
+  assert.deepEqual([...warped.slice(center, center + 4)], [...source.slice(center, center + 4)]);
+  assert.notDeepEqual(warped, source);
+  assert.equal(warped.length, source.length);
+});
 
 test("legacy effects are filtered by state, target and global switches", () => {
   const renderer = Object.create(AvatarRenderer.prototype);
