@@ -184,6 +184,32 @@ test("Admin dashboard exposes pending Storage cleanup retry", () => {
   assert.ok(edge.includes("cleanup_pending_count: cleanupQ.count || 0"));
 });
 
+test("Admin expression deletion and background replacement use durable cleanup", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const app = read("src/app.js");
+  const adminDelete = edge.slice(edge.indexOf('if (action === "admin_delete_asset")'), edge.indexOf('if (action === "my_assets")'));
+  const background = edge.slice(edge.indexOf('if (action === "record_background_asset")'), edge.indexOf('if (action === "profile_save")'));
+  assert.ok(adminDelete.includes('"admin_support_expression_delete"'));
+  assert.ok(adminDelete.includes("processStorageCleanup(db, job)"));
+  assert.ok(background.includes('"background_replaced"'));
+  assert.ok(background.includes("cleanup_pending: cleanupPending"));
+  assert.ok(app.includes("file background lama masih menunggu penghapusan Storage"));
+  assert.ok(app.includes("Failed to clean up unregistered background upload:"));
+});
+
+test("Admin account deletion queues expression, accessory and background objects", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const app = read("src/app.js");
+  const deletion = edge.slice(edge.indexOf('if (action === "admin_delete_user")'), edge.indexOf('if (action === "profile_get")'));
+  assert.ok(deletion.includes('db.from("vio_character_assets")'));
+  assert.ok(deletion.includes('db.from("vio_character_accessories")'));
+  assert.ok(deletion.includes('db.from("vio_profiles")'));
+  assert.ok(deletion.includes('"admin_user_deletion"'));
+  assert.ok(deletion.indexOf("enqueueStorageCleanup") < deletion.indexOf("db.auth.admin.deleteUser"));
+  assert.ok(deletion.includes("processStorageCleanup(db, job)"));
+  assert.ok(app.includes("Storage object(s) still need cleanup"));
+});
+
 test("portrait and custom output resolutions are shared by editor, room and OBS", () => {
   const app = read("src/app.js");
   const overlay = read("src/overlay.js");
