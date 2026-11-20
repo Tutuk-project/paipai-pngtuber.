@@ -1305,6 +1305,7 @@ async function uploadCharacterAsset(state, file) {
   if (!supabase || !currentUser) return showAppToast("Backend belum siap.", "error");
   if (!/^image\/(png|webp)$/.test(file.type)) return showAppToast("Gunakan PNG atau WebP.", "error");
   if (file.size < 1 || file.size > 8 * 1024 * 1024) return showAppToast("Ukuran maksimal file 8 MB.", "error");
+  let uploadedPath = null;
   try {
     if (!activeCharacterId) await refreshCharacterLibrary();
     if (!activeCharacterId) {
@@ -1315,9 +1316,11 @@ async function uploadCharacterAsset(state, file) {
     const storagePath = `${currentUser.id}/characters/${activeCharacterId}/${state}.${ext}`;
     const { error: uploadError } = await supabase.storage.from("vio-studio-assets").upload(storagePath, file, { upsert: true, contentType: file.type, cacheControl: "3600" });
     if (uploadError) throw uploadError;
+    uploadedPath = storagePath;
     const { data: signed, error: signedError } = await supabase.storage.from("vio-studio-assets").createSignedUrl(storagePath, 3600);
     if (signedError) throw signedError;
     await api("record_asset", { character_id: activeCharacterId, storage_path: storagePath, expression: state, mime_type: file.type, size_bytes: file.size });
+    uploadedPath = null;
     assetUrls[state] = signed.signedUrl;
     drawPreview();
     renderAccessoryQuickScales();
@@ -1325,6 +1328,10 @@ async function uploadCharacterAsset(state, file) {
     await broadcastMemberAssetsUpdated();
     showAppToast(`${state.replace("_"," ").toUpperCase()} berhasil diunggah`);
   } catch (error) {
+    if (uploadedPath) {
+      const { error: cleanupError } = await supabase.storage.from("vio-studio-assets").remove([uploadedPath]);
+      if (cleanupError) console.warn("Failed expression upload cleanup:", cleanupError);
+    }
     showAppToast(`Upload gagal: ${error.message}`, "error");
   }
 }
