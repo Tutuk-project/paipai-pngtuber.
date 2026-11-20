@@ -1030,7 +1030,7 @@ async function startAdminSupportView(userId) {
       const label = document.createElement("span"); label.textContent = `${asset.expression} · ${asset.mime_type} · ${Math.ceil(asset.size_bytes / 1024)} KB`;
       row.append(label);
       if (asset.signed_url) { const link = document.createElement("a"); link.href = asset.signed_url; link.target = "_blank"; link.rel = "noopener"; link.textContent = "Open"; row.append(link); }
-      const remove = actionButton("Delete file", async () => { if (!confirm(`Delete ${asset.expression} asset for @${detail.user.username}?`)) return; await api("admin_delete_asset", { target_user_id: userId, asset_id: asset.id, support_session: activeSupportSession?.token }); row.remove(); });
+      const remove = actionButton("Delete file", async () => { if (!confirm(`Delete ${asset.expression} asset for @${detail.user.username}?`)) return; await api("admin_delete_asset", { target_user_id: userId, asset_id: asset.id, asset_type: asset.asset_type || "expression", support_session: activeSupportSession?.token }); row.remove(); });
       row.append(remove); assetsList.append(row);
     });
     if (!detail.assets?.length) assetsList.textContent = "No uploaded assets.";
