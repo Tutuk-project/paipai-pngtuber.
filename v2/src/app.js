@@ -851,6 +851,8 @@ function renderRoomParticipants() {
   const tags = $("participantNames");
   tags.replaceChildren();
   if (!visible.length) {
+    if (renderFrame) cancelAnimationFrame(renderFrame);
+    renderFrame = 0;
     for (const entry of roomPreviewRenderers.values()) entry.renderer.stop();
     roomPreviewRenderers.clear();
     tags.textContent = "Waiting for participants…";
@@ -888,7 +890,7 @@ function renderRoomParticipants() {
     entry.renderer.setPreferences(preferences);
     entry.renderer.setState(member.state === "talking" ? "talking" : "idle");
     entry.renderer.start();
-    ctx.drawImage(entry.canvas, slotWidth * index, 0, slotWidth, canvas.height);
+
 
     const state = member.state === "talking" ? "talking" : "idle";
     const tag = document.createElement("span");
@@ -898,6 +900,22 @@ function renderRoomParticipants() {
     tag.append(name, document.createTextNode(state.toUpperCase()));
     tags.append(tag);
   }
+  if (!renderFrame) renderFrame = requestAnimationFrame(drawRoomStageFrame);
+}
+
+function drawRoomStageFrame() {
+  renderFrame = 0;
+  if (!currentRoom) return;
+  const canvas = $("roomStage");
+  const ctx = canvas.getContext("2d");
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const visible = roomMembers.slice(0, 4);
+  const slotWidth = canvas.width / Math.max(1, visible.length);
+  visible.forEach((member, index) => {
+    const entry = roomPreviewRenderers.get(member.user_id);
+    if (entry?.canvas) ctx.drawImage(entry.canvas, slotWidth * index, 0, slotWidth, canvas.height);
+  });
+  renderFrame = requestAnimationFrame(drawRoomStageFrame);
 }
 
 async function leaveRoom(restoreView = true) {
@@ -913,6 +931,8 @@ async function leaveRoom(restoreView = true) {
       try { await api("profile_save", { display_name: currentUser.display_name || currentUser.username, preferences: profilePreferences }); } catch (error) { console.warn("Room restore pointer could not be cleared:", error.message); }
     }
   }
+  if (renderFrame) cancelAnimationFrame(renderFrame);
+  renderFrame = 0;
   for (const entry of roomPreviewRenderers.values()) entry.renderer.stop();
   roomPreviewRenderers.clear();
   currentRoom = null; roomMembers = []; remotePlayerStates.clear(); remotePlayerSequences.clear(); remoteLayoutSequences.clear(); roomPreviewImages.clear();
