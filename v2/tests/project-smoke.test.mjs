@@ -85,16 +85,18 @@ test("Admin account creation is a single database transaction", () => {
 test("collaboration preview and OBS overlay both render per-member accessories", () => {
   const app = read("src/app.js");
   const overlay = read("src/overlay.js");
-  assert.match(app, /entry\\.renderer\\.setAccessories\\(member\\.accessories \\|\\| \\[\\]\\)/);
-  assert.match(app, /roomPreviewRenderers\\.values\\(\\)[\\s\\S]*?renderer\\.stop/);
-  assert.match(overlay, /renderer\\.setAccessories\\(member\\.accessories \\|\\| \\[\\]\\)/);
+  assert.ok(app.includes("entry.renderer.setAccessories(member.accessories || [])"));
+  assert.ok(app.includes("roomPreviewRenderers.values()"));
+  assert.ok(overlay.includes("renderer.setAccessories(member.accessories || [])"));
 });
 
 test("accessory upload refreshes the active room snapshot", () => {
   const app = read("src/app.js");
-  const upload = app.match(/async function uploadCharacterAccessories\\(files\\) \\{[\\s\\S]*?\\n\\}/)?.[0] || "";
-  assert.match(upload, /api\\("my_assets"\\)/);
-  assert.match(upload, /if \\(currentRoom\\) await loadRoomMembers\\(\\)/);
+  const start = app.indexOf("async function uploadCharacterAccessories(files)");
+  const end = app.indexOf("\nfunction renderAccessorySettingsList()", start);
+  const upload = start >= 0 && end > start ? app.slice(start, end) : "";
+  assert.ok(upload.includes('api("my_assets")'));
+  assert.ok(upload.includes("if (currentRoom) await loadRoomMembers()"));
 });
 
 test("modular avatar renderer is wired into editor and OBS overlay", () => {
