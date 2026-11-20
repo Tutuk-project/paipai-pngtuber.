@@ -71,6 +71,36 @@ async function cancelStorageCleanup(db: SupabaseClient, jobId: string, reason: s
 }
 
 async function processStorageCleanup(db: SupabaseClient, job: any) {
+  // A failed cancellation must never let the retry worker delete a file that
+  // is still referenced by an expression, accessory, or active background.
+  let referenced = false;
+  if (job.bucket_id === "vio-studio-assets") {
+    const [expressionQ, accessoryQ] = await Promise.all([
+      db.from("vio_character_assets").select("id").eq("bucket_id", job.bucket_id).eq("storage_path", job.storage_path).limit(1),
+      db.from("vio_character_accessories").select("id").eq("bucket_id", job.bucket_id).eq("storage_path", job.storage_path).limit(1)
+    ]);
+    if (expressionQ.error) throw expressionQ.error;
+    if (accessoryQ.error) throw accessoryQ.error;
+    referenced = Boolean(expressionQ.data?.length || accessoryQ.data?.length);
+  } else if (job.bucket_id === "vio-backgrounds") {
+    const { data, error } = await db.from("vio_profiles").select("user_id")
+      .contains("preferences", { background: { bucket_id: "vio-backgrounds", storage_path: job.storage_path } })
+      .limit(1);
+    if (error) throw error;
+    referenced = Boolean(data?.length);
+  } else {
+    throw new Error("STORAGE_CLEANUP_BUCKET_NOT_ALLOWED");
+  }
+
+  if (referenced) {
+    const { error } = await db.from("vio_storage_cleanup_queue").update({
+      processed_at: new Date().toISOString(),
+      last_error: "Skipped safely: Storage object is still referenced by profile or asset metadata."
+    }).eq("id", job.id);
+    if (error) throw error;
+    return { ok: true, skipped: true };
+  }
+
   const { error: storageError } = await db.storage.from(job.bucket_id).remove([job.storage_path]);
   const attempts = (Number(job.attempts) || 0) + 1;
   if (storageError) {
