@@ -291,12 +291,12 @@ function renderSettings(menuId) {
       if (!supabase || !currentUser) return alert("Backend belum siap.");
       const isVideo = file.type.startsWith("video/");
       const allowed = ["image/png", "image/jpeg", "image/webp", "image/gif", "video/mp4", "video/webm"];
-      const limit = isVideo ? 60 * 1024 * 1024 : 20 * 1024 * 1024;
+      const limit = isVideo ? 50 * 1024 * 1024 : 20 * 1024 * 1024;
       if (!allowed.includes(file.type) || file.size < 1 || file.size > limit) return alert("Format atau ukuran background tidak didukung.");
       const extensions = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "video/mp4": "mp4", "video/webm": "webm" };
       const storagePath = `${currentUser.id}/background/${crypto.randomUUID()}.${extensions[file.type]}`;
       try {
-        const { error } = await supabase.storage.from("vio-studio-assets").upload(storagePath, file, { upsert: false, contentType: file.type, cacheControl: "3600" });
+        const { error } = await supabase.storage.from("vio-backgrounds").upload(storagePath, file, { upsert: false, contentType: file.type, cacheControl: "3600" });
         if (error) throw error;
         const result = await api("record_background_asset", { storage_path: storagePath, mime_type: file.type, size_bytes: file.size });
         Object.assign(background, result.background);
