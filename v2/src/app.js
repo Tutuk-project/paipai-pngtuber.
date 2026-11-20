@@ -919,9 +919,10 @@ async function login(username, pairingCode) {
   currentUser = identity.user;
   $("pairingInput").value = "";
   $("pairingWrap").hidden = true;
-  // Start capture right after the user completes login; browser permission is still required.
-  await startMicrophone({ silent: true });
+  // Load saved device and audio preferences before opening the microphone stream.
+  // AudioEngine.setOptions cannot switch an already-open MediaStream device.
   await loadCurrentProfile();
+  await startMicrophone({ silent: true });
   try {
     await refreshCharacterLibrary();
     await loadActiveCharacterAssets();
@@ -1745,11 +1746,31 @@ async function loadRoomMembers() {
     const result = await api("room_members", { room_id: currentRoom.id });
     roomMembers = result.members || [];
     const ownMember = roomMembers.find(member => member.user_id === currentUser.id);
-    if (ownMember?.overrides) {
-      roomOverrides = { ...roomOverrides, ...ownMember.overrides };
-      audio?.setOptions({ deviceId: roomOverrides.deviceId || "", sensitivity: roomOverrides.sensitivity ?? 1, boostDb: roomOverrides.boostDb ?? 6 });
-      renderRoomControls();
+    // Room controls are a room-scoped layer over the saved profile defaults.
+    // Always rebuild this state: retaining the previous room's local overrides
+    // makes sliders disagree with the values actually rendered by participants.
+    const profileRoomDefaults = {
+      scale: Number(profilePreferences.scale ?? 1),
+      x: 0,
+      y: 0,
+      sensitivity: Number(profilePreferences.sensitivity ?? 1),
+      boostDb: Number(profilePreferences.boostDb ?? 6),
+      deviceId: String(profilePreferences.deviceId || "")
+    };
+    roomOverrides = { ...profileRoomDefaults, ...(ownMember?.overrides || {}) };
+    if (audio) {
+      const nextDeviceId = String(roomOverrides.deviceId || "");
+      const currentDeviceId = String(audio.options?.deviceId || "");
+      const wasMicActive = micEnabled;
+      if (currentDeviceId !== nextDeviceId && wasMicActive) await audio.stop();
+      audio.setOptions({
+        deviceId: nextDeviceId,
+        sensitivity: roomOverrides.sensitivity,
+        boostDb: roomOverrides.boostDb
+      });
+      if (currentDeviceId !== nextDeviceId && wasMicActive) await audio.start();
     }
+    renderRoomControls();
     for (const member of roomMembers) member.state = remotePlayerStates.get(member.user_id) || member.state || "idle";
     renderRoomParticipants();
     return roomMembers;
@@ -1918,6 +1939,10 @@ async function generateOverlayLink(button = null) {
   overlayGenerationBusy = true;
   syncOverlayGeneratorButtons("Membuat link…", true, "generate");
   try {
+    // The clean OBS URL has no editor controls. Its mouth state is driven by
+    // this Creator session's microphone over the room's Realtime channel.
+    // Request permission from the Generate button gesture if capture is off.
+    if (!micEnabled) await startMicrophone();
     let room = currentRoom;
     if (!room) {
       // Reuse an active room first; this handles stale in-memory state after refresh.
@@ -1942,6 +1967,7 @@ async function generateOverlayLink(button = null) {
       await api("profile_save", { display_name: currentUser.display_name || currentUser.username, preferences: profilePreferences });
       await subscribeRoom(room.id);
       await loadRoomMembers();
+      await broadcastPlayerState(currentMicState);
     }
     const result = await api("issue_room_overlay", { room_id: room.id });
     if (!result?.room_id || !result?.overlay_token || String(result.overlay_token).length < 20) throw new Error("Server tidak mengembalikan kredensial overlay yang valid.");
@@ -1951,7 +1977,9 @@ async function generateOverlayLink(button = null) {
     $("overlayLinkUrl").value = generatedOverlayUrl;
     syncOverlayGeneratorButtons("Salin Link", false, "copy");
     $("overlayLinkDialog").showModal();
-    showToast("Link OBS siap. Salin URL dari jendela ini.");
+    showToast(micEnabled
+      ? "Link OBS siap. Mic Creator aktif dan mengirim status avatar."
+      : "Link OBS siap, tetapi mic belum aktif. Aktifkan Mic ON di Creator agar avatar bisa mendeteksi suara.", micEnabled ? "success" : "error");
   } catch (error) {
     syncOverlayGeneratorButtons("Generate OBS Link", false, "generate");
     showToast(`OBS Link belum bisa dibuat: ${error.message}`, "error");
