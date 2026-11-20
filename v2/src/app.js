@@ -701,7 +701,8 @@ function renderAccessorySettingsList() {
     const remove = actionButton("Hapus aksesori", async () => {
       if (!confirm(`Hapus aksesori "${item.name}"?`)) return;
       try {
-        await api("delete_accessory", { accessory_id: item.id });
+        const deletion = await api("delete_accessory", { accessory_id: item.id });
+        if (deletion.cleanup_pending) alert("Aksesori dihapus dari profil, tetapi penghapusan file Storage masih tertunda. Admin dapat menjalankan retry cleanup.");
         characterAccessories = characterAccessories.filter(x => x.id !== item.id);
         if (selectedAccessoryId === item.id) selectedAccessoryId = null;
         drawPreview(); renderAccessorySettingsList();
