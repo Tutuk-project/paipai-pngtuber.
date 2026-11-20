@@ -283,7 +283,7 @@ function renderSettings(menuId) {
     const mediaInput = document.createElement("input"); mediaInput.type = "file"; mediaInput.className = "text-input";
     mediaInput.accept = "image/png,image/jpeg,image/webp,image/gif,video/mp4,video/webm";
     const mediaHint = document.createElement("p"); mediaHint.className = "muted";
-    mediaHint.textContent = "Image/GIF maks. 20 MB. Video MP4/WebM maks. 60 MB. Video diputar muted dan loop.";
+    mediaHint.textContent = "Image/GIF maks. 20 MB. Video MP4/WebM maks. 50 MB. Video diputar muted dan loop.";
     mediaInput.addEventListener("change", async () => {
       const file = mediaInput.files?.[0];
       mediaInput.value = "";
