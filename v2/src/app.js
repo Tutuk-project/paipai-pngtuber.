@@ -186,7 +186,7 @@ function renderSettings(menuId) {
     accessoryTitle.textContent = "Accessories";
     const accessoryHint = document.createElement("p");
     accessoryHint.className = "muted";
-    accessoryHint.textContent = "Tambahkan PNG/WebP transparan, lalu atur posisi, ukuran, mirror, dan gerakan mengikuti avatar.";
+    accessoryHint.textContent = "Tambahkan PNG/WebP transparan. Pilih aksesori lalu seret langsung pada preview; slider tetap tersedia untuk penyesuaian presisi.";
     const accessoryInput = document.createElement("input");
     accessoryInput.type = "file";
     accessoryInput.accept = "image/png,image/webp";
@@ -640,7 +640,14 @@ function renderAccessorySettingsList() {
   for (const item of characterAccessories) {
     const card = document.createElement("div");
     card.className = "setting-field";
-    card.style.cssText = "padding:10px;border:1px solid var(--line);border-radius:12px";
+    card.dataset.accessoryId = item.id;
+    card.style.cssText = "padding:10px;border:1px solid var(--line);border-radius:12px;cursor:pointer";
+    card.style.outline = selectedAccessoryId === item.id ? "2px solid var(--mint)" : "none";
+    card.addEventListener("click", event => {
+      if (event.target.closest("button,input")) return;
+      selectedAccessoryId = item.id;
+      for (const sibling of host.children) sibling.style.outline = sibling.dataset.accessoryId === item.id ? "2px solid var(--mint)" : "none";
+    });
     const heading = document.createElement("strong");
     heading.textContent = item.name || "Accessory";
     const preview = document.createElement("img");
@@ -686,6 +693,7 @@ function renderAccessorySettingsList() {
       try {
         await api("delete_accessory", { accessory_id: item.id });
         characterAccessories = characterAccessories.filter(x => x.id !== item.id);
+        if (selectedAccessoryId === item.id) selectedAccessoryId = null;
         drawPreview(); renderAccessorySettingsList();
       } catch (error) { alert(`Gagal menghapus aksesori: ${error.message}`); }
     });
