@@ -124,6 +124,9 @@ async function boot() {
         if (member) member.overrides = { ...(member.overrides || {}), ...payload.overrides };
         render();
       })
+      .on("broadcast", { event: "member-assets-updated" }, () => {
+        refreshMembers().catch(error => { statusEl.textContent = error.message; });
+      })
       .on("presence", { event: "sync" }, () => {
         statusEl.textContent = `${Object.keys(channel.presenceState()).length} connected · Vio Studio v2.0`;
         refreshMembers().catch(error => { statusEl.textContent = error.message; });
