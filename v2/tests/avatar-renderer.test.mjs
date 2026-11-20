@@ -22,7 +22,7 @@ function makeContext() {
 function makeRenderer(items, effects = {}) {
   const renderer = Object.create(AvatarRenderer.prototype);
   renderer.accessories = items;
-  renderer.preferences = { mirror: true, effects };
+  renderer.preferences = { mirror: true, effects: { enabled: true, stickerEffectsEnabled: true, ...effects } };
   renderer.avatarMotion = { centerX: 100, centerY: 80, rotation: 0.25, scaleX: -2, scaleY: 2 };
   return renderer;
 }
