@@ -224,6 +224,20 @@ test("clearing an uploaded background detaches it before queued Storage cleanup"
   assert.ok(app.includes("Background sudah dilepas dari profil"));
 });
 
+test("visual effects UI exposes all seven legacy effects with per-state and per-target controls", () => {
+  const app = read("src/app.js");
+  const renderer = read("src/avatar-renderer.js");
+  for (const label of ["Filter warna", "Stroke", "Shadow", "Emission / bloom", "Distorsi", "Eagle eye", "Bergetar"]) assert.ok(app.includes(label));
+  for (const state of ["idle", "talking", "talking_blink"]) assert.ok(app.includes(state));
+  assert.ok(app.includes("Ekspresi yang terkena efek"));
+  assert.ok(app.includes("Target efek"));
+  assert.ok(app.includes("Izinkan efek pada aksesori"));
+  assert.ok(renderer.includes("function normalizeEffects"));
+  assert.ok(renderer.includes("activeEffects(state, target"));
+  assert.ok(renderer.includes('ids.includes("eagle")'));
+  assert.ok(renderer.includes('ids.includes("shake")'));
+});
+
 test("portrait and custom output resolutions are shared by editor, room and OBS", () => {
   const app = read("src/app.js");
   const overlay = read("src/overlay.js");
