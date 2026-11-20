@@ -277,6 +277,20 @@ test("legacy talking squash is configurable and inherited by following accessori
   assert.ok(app.includes('"squash", "Talking squash"'));
 });
 
+test("legacy effect composition order, distortion rows and motion timing are preserved", () => {
+  const renderer = read("src/avatar-renderer.js");
+  const app = read("src/app.js");
+  const sprite = renderer.slice(renderer.indexOf("effectSprite(image, ids)"), renderer.indexOf("drawEffectSprite("));
+  assert.ok(sprite.indexOf("if (stroke)") < sprite.indexOf("if (bloom)"));
+  assert.ok(sprite.indexOf("if (bloom)") < sprite.indexOf("if (shadow)"));
+  assert.ok(renderer.includes("const rows = 48"));
+  assert.ok(renderer.includes('target === "avatar"'));
+  assert.ok(renderer.includes("bounceMs: 240"));
+  assert.ok(renderer.includes("idleBob: 0.006"));
+  assert.ok(app.includes('"bounceMs", "Bounce duration (ms)"'));
+  assert.ok(app.includes('"idleBob", "Idle bob"'));
+});
+
 test("portrait and custom output resolutions are shared by editor, room and OBS", () => {
   const app = read("src/app.js");
   const overlay = read("src/overlay.js");
