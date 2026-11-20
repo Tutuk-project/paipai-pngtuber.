@@ -438,7 +438,7 @@ export class AvatarRenderer {
     const shakeY = shake ? Math.cos(now / 17) * Math.sin(now / 27) * shake * 24 : 0;
     const centerX = W / 2 + (Number(p.offsetX) || 0) + shakeX;
     const centerY = H / 2 + (Number(p.offsetY) || 0) - bounce + shakeY;
-    this.avatarMotion = { centerX, centerY, rotation, scaleX: scale * (p.mirror === false ? 1 : -1), scaleY: scale, shakeX, shakeY };
+    this.avatarMotion = { centerX, centerY, rotation, scaleX: scale, scaleY: scale, mirror: p.mirror !== false, shakeX, shakeY };
     const sprite = this.effectSprite(image, ids);
     ctx.save();
     ctx.translate(centerX, centerY);
@@ -487,7 +487,7 @@ export class AvatarRenderer {
         const shakeY = shake ? Math.cos(now / 17) * Math.sin(now / 27) * shake * 24 : 0;
         ctx.translate(x + W / 2 + shakeX, y + H / 2 + shakeY);
       }
-      if (item.mirror) ctx.scale(-1, 1);
+      if (item.mirror && this.preferences.mirror !== false) ctx.scale(-1, 1);
       if (ids.includes("shadow")) {
         ctx.shadowColor = effects.shadow.color || "#101010";
         ctx.shadowBlur = Math.max(0, Number(effects.shadow.intensity) || 0) * 0.28;
