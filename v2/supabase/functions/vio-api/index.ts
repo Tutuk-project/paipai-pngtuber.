@@ -497,6 +497,36 @@ Deno.serve(async (req) => {
       return json({ ok: true, cleanup_pending: cleanupPending, background: { ...background, src: signed.signedUrl } });
     }
 
+    if (action === "clear_background") {
+      const user = requireUser();
+      const { data: profile, error: profileError } = await db.from("vio_profiles").select("preferences").eq("user_id", user.id).maybeSingle();
+      if (profileError) throw profileError;
+      const preferences = { ...((profile?.preferences || {}) as Record<string, any>) };
+      const previous = preferences.background || {};
+      let job: any = null;
+      if (previous.storage_path && previous.bucket_id === "vio-backgrounds") {
+        job = await enqueueStorageCleanup(db, previous.bucket_id, previous.storage_path, user.id, user.id, "background_cleared");
+      }
+      const background = { ...previous, mode: "transparent" };
+      delete background.src;
+      delete background.storage_path;
+      delete background.bucket_id;
+      delete background.mime_type;
+      preferences.background = background;
+      const { error: saveError } = await db.from("vio_profiles").upsert({ user_id: user.id, preferences, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+      if (saveError) {
+        if (job) await cancelStorageCleanup(db, job.id, "profile background clear did not save");
+        throw saveError;
+      }
+      let cleanupPending = false;
+      if (job) {
+        const cleanup = await processStorageCleanup(db, job);
+        cleanupPending = !cleanup.ok;
+      }
+      await audit(db, user.id, user.id, "background_cleared", { cleanup_pending: cleanupPending });
+      return json({ ok: true, cleanup_pending: cleanupPending, background });
+    }
+
     if (action === "profile_save") {
       const user = requireUser();
       const displayName = String(body.display_name || user.display_name || user.username).trim().slice(0, 48);
