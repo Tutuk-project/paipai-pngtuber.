@@ -342,13 +342,38 @@ export class AvatarRenderer {
     if (cache.has(signature)) return cache.get(signature);
     const stroke = ids.includes("stroke") ? effects.stroke : null;
     const strokeThickness = stroke ? Math.max(1, Math.min(32, Number(stroke.thickness) || 8)) : 0;
-    const pad = Math.max(Math.ceil(Math.max(width, height) * 0.12), strokeThickness);
+    const pad = Math.ceil(Math.max(width, height) * 0.12);
     const canvas = document.createElement("canvas");
     canvas.width = width + pad * 2;
     canvas.height = height + pad * 2;
     const ctx = canvas.getContext("2d");
     const bloom = ids.includes("bloom") ? (effects.bloom || effects.glow) : null;
     const shadow = ids.includes("shadow") ? effects.shadow : null;
+
+    if (stroke) {
+      const mask = document.createElement("canvas");
+      mask.width = canvas.width; mask.height = canvas.height;
+      const maskCtx = mask.getContext("2d");
+      maskCtx.drawImage(image, pad, pad, width, height);
+      maskCtx.globalCompositeOperation = "source-in";
+      maskCtx.fillStyle = stroke.color || "#ffffff";
+      maskCtx.fillRect(0, 0, mask.width, mask.height);
+      ctx.save();
+      if (!stroke.invert) {
+        for (let angle = 0; angle < 8; angle++) {
+          const rad = angle * Math.PI / 4;
+          ctx.drawImage(mask, Math.cos(rad) * strokeThickness, Math.sin(rad) * strokeThickness);
+        }
+      } else {
+        ctx.drawImage(image, pad, pad, width, height);
+        ctx.globalCompositeOperation = "source-atop";
+        ctx.strokeStyle = stroke.color || "#ffffff";
+        ctx.globalAlpha = 0.95;
+        ctx.lineWidth = strokeThickness * 2;
+        ctx.strokeRect(pad + strokeThickness, pad + strokeThickness, width - strokeThickness * 2, height - strokeThickness * 2);
+      }
+      ctx.restore();
+    }
 
     if (bloom) {
       const tint = sampleDominantColor(image, bloom.color || "#ffd7b8");
@@ -357,9 +382,9 @@ export class AvatarRenderer {
       ctx.globalCompositeOperation = "screen";
       ctx.shadowColor = tint;
       ctx.shadowBlur = 12 + Math.max(0, Number(bloom.intensity) || 0) * 0.5;
-      ctx.globalAlpha = 0.8;
+      ctx.globalAlpha = 0.9;
       ctx.drawImage(image, pad, pad, width, height);
-      ctx.filter = `blur(${Math.max(2, Number(bloom.intensity) * 0.12)}px) brightness(2.1) saturate(1.6)`;
+      ctx.filter = `blur(${Math.max(2, Number(bloom.intensity) * 0.12)}px) brightness(2.2) saturate(1.7)`;
       ctx.drawImage(image, pad, pad, width, height);
       ctx.restore();
 
@@ -387,36 +412,14 @@ export class AvatarRenderer {
       ctx.restore();
     }
 
+
+
     if (shadow) {
       ctx.save();
       ctx.shadowColor = shadow.color || "#101010";
       ctx.shadowBlur = Math.max(0, Number(shadow.intensity) || 0) * 0.28;
       ctx.shadowOffsetY = Math.max(0, Number(shadow.intensity) || 0) * 0.1;
       ctx.drawImage(image, pad, pad, width, height);
-      ctx.restore();
-    }
-
-    if (stroke) {
-      const mask = document.createElement("canvas");
-      mask.width = canvas.width; mask.height = canvas.height;
-      const maskCtx = mask.getContext("2d");
-      maskCtx.drawImage(image, pad, pad, width, height);
-      maskCtx.globalCompositeOperation = "source-in";
-      maskCtx.fillStyle = stroke.color || "#ffffff";
-      maskCtx.fillRect(0, 0, mask.width, mask.height);
-      ctx.save();
-      if (!stroke.invert) {
-        for (let angle = 0; angle < 8; angle++) {
-          const rad = angle * Math.PI / 4;
-          ctx.drawImage(mask, Math.cos(rad) * strokeThickness, Math.sin(rad) * strokeThickness);
-        }
-      } else {
-        ctx.drawImage(image, pad, pad, width, height);
-        ctx.globalCompositeOperation = "source-atop";
-        ctx.strokeStyle = stroke.color || "#ffffff";
-        ctx.lineWidth = strokeThickness;
-        ctx.strokeRect(pad, pad, width, height);
-      }
       ctx.restore();
     }
 
