@@ -40,7 +40,7 @@
           <input id="usernameInput" name="username" class="text-input" autocomplete="username" minlength="3" maxlength="24" pattern="[a-zA-Z0-9_]{3,24}" placeholder="contoh: paipai77" required>
           <div id="pairingWrap" class="pairing-wrap" hidden>
             <label id="pairingLabel" for="pairingInput">Kode pairing perangkat</label>
-            <input id="pairingInput" class="text-input" autocomplete="one-time-code" maxlength="256" placeholder="Kode sekali pakai dari Admin">
+            <input id="pairingInput" class="text-input" type="password" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="256" placeholder="Kode sekali pakai dari Admin">
             <small id="pairingHint" class="muted">Hanya diperlukan saat pertama kali memakai perangkat ini atau setelah sesi dihapus. Bukan password.</small>
           </div>
           <button id="loginButton" class="button button-primary button-wide" type="submit">Continue</button>
