@@ -285,6 +285,7 @@ function renderSettings(menuId) {
     const applyCustomResolution = () => {
       const width = Math.max(320, Math.min(3840, Math.round(Number(widthInput.value) || 1080)));
       const height = Math.max(320, Math.min(3840, Math.round(Number(heightInput.value) || 1920)));
+      if (width * height > 8294400) return alert("Output dibatasi maksimal 8,3 megapiksel agar perangkat tidak kehabisan memori.");
       widthInput.value = String(width); heightInput.value = String(height);
       prefs.outputWidth = width; prefs.outputHeight = height;
       const key = `${width}x${height}`;
