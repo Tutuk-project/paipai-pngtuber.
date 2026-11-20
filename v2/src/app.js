@@ -330,10 +330,13 @@ function renderSettings(menuId) {
       if (!allowed.includes(file.type) || file.size < 1 || file.size > limit) return alert("Format atau ukuran background tidak didukung.");
       const extensions = { "image/png": "png", "image/jpeg": "jpg", "image/webp": "webp", "image/gif": "gif", "video/mp4": "mp4", "video/webm": "webm" };
       const storagePath = `${currentUser.id}/background/${crypto.randomUUID()}.${extensions[file.type]}`;
+      let metadataRecorded = false;
       try {
         const { error } = await supabase.storage.from("vio-backgrounds").upload(storagePath, file, { upsert: false, contentType: file.type, cacheControl: "3600" });
         if (error) throw error;
         const result = await api("record_background_asset", { storage_path: storagePath, mime_type: file.type, size_bytes: file.size });
+        metadataRecorded = true;
+        if (result.cleanup_pending) alert("Background baru aktif, tetapi file background lama masih menunggu penghapusan Storage. Admin dapat menjalankan retry cleanup.");
         Object.assign(background, result.background);
         prefs.background = { ...background };
         mode.value = background.mode;
@@ -341,7 +344,13 @@ function renderSettings(menuId) {
         if (currentRoom) await loadRoomMembers();
         await broadcastMemberAssetsUpdated();
         showMessage("loginMessage", "Background berhasil diunggah.", "success");
-      } catch (error) { alert(`Upload background gagal: ${error.message}`); }
+      } catch (error) {
+        if (!metadataRecorded) {
+          const { error: cleanupError } = await supabase.storage.from("vio-backgrounds").remove([storagePath]);
+          if (cleanupError) console.warn("Failed to clean up unregistered background upload:", cleanupError);
+        }
+        alert(`Upload background gagal: ${error.message}`);
+      }
     });
     mediaField.append(mediaLabel, mediaInput, mediaHint);
     bgWrap.append(mediaField);
