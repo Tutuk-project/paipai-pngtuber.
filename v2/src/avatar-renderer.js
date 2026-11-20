@@ -169,7 +169,7 @@ export class AvatarRenderer {
       : "none";
     const centerX = W / 2 + (Number(p.offsetX) || 0);
     const centerY = H / 2 + (Number(p.offsetY) || 0) - bounce;
-    this.avatarMotion = { centerX, centerY, rotation, scaleX: 1, scaleY: 1 };
+    this.avatarMotion = { centerX, centerY, rotation, scaleX: scale * (p.mirror === false ? 1 : -1), scaleY: scale };
     ctx.save();
     ctx.translate(centerX, centerY);
     ctx.rotate(rotation);
@@ -216,24 +216,25 @@ export class AvatarRenderer {
   }
 
   drawAccessories(ctx, W, H, now) {
+    const motion = this.avatarMotion || { centerX: W / 2, centerY: H / 2, rotation: 0, scaleX: 1, scaleY: 1 };
+    const effects = this.preferences.effects || {};
     for (const item of this.accessories) {
       const image = item.image;
       if (!image?.complete || !image.naturalWidth) continue;
-      const x = (Number(item.x) || 0.5) * W;
-      const y = (Number(item.y) || 0.5) * H;
-      const width = (Number(item.w) || 0.18) * W;
-      const height = (Number(item.h) || 0.18) * H;
-      const motion = this.avatarMotion || { centerX: W / 2, centerY: H / 2, rotation: 0, scaleX: 1, scaleY: 1 };
+      const x = (Number(item.x ?? 0.5) - 0.5) * W;
+      const y = (Number(item.y ?? 0.5) - 0.5) * H;
+      const width = Math.max(1, Number(item.w) || 0.18) * W;
+      const height = Math.max(1, Number(item.h) || 0.18) * H;
+      const followsAvatar = item.follow !== false;
       ctx.save();
-      if (item.follow !== false) {
-        x = motion.centerX + (x - W / 2) * motion.scaleX;
-        y = motion.centerY + (y - H / 2) * motion.scaleY;
-        ctx.translate(x, y);
+      if (followsAvatar) {
+        ctx.translate(motion.centerX, motion.centerY);
         ctx.rotate(motion.rotation);
-      } else {
+        ctx.scale(motion.scaleX, motion.scaleY);
         ctx.translate(x, y);
+      } else {
+        ctx.translate(x + W / 2, y + H / 2);
       }
-      const effects = this.preferences.effects || {};
       if (item.effectsEnabled !== false && effects.filter?.enabled) {
         ctx.filter = `hue-rotate(${Number(effects.filter.hue) || 0}deg) saturate(${Number(effects.filter.saturation) || 100}%) brightness(${Number(effects.filter.brightness) || 100}%) contrast(${Number(effects.filter.contrast) || 100}%) grayscale(${Number(effects.filter.grayscale) || 0}%) sepia(${Number(effects.filter.sepia) || 0}%)`;
       }
@@ -246,7 +247,7 @@ export class AvatarRenderer {
         ctx.shadowColor = effects.glow.color || "#ffd7b8";
         ctx.shadowBlur = Math.max(0, Number(effects.glow.intensity) || 0) * 0.7;
       }
-      if (item.mirror && this.preferences.mirror !== false) ctx.scale(-1, 1);
+      if (item.mirror) ctx.scale(-1, 1);
       ctx.drawImage(image, -width / 2, -height / 2, width, height);
       ctx.restore();
     }
