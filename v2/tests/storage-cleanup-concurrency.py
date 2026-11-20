@@ -106,21 +106,23 @@ def test_reference_wins():
     print("PASS reference wins: cleanup queue observes committed reference")
 
 def test_all_reference_tables_block_pending_queue():
-    with connect() as conn:
-        conn.execute("insert into public.vio_storage_cleanup_queue(bucket_id, storage_path) values ('vio-studio-assets', 'race/asset.png'), ('vio-backgrounds', 'race/bg.png')")
-        checks = [
-            ("insert into public.vio_character_assets(bucket_id, storage_path) values ('vio-studio-assets', 'race/asset.png')",),
-            ("insert into public.vio_character_accessories(bucket_id, storage_path) values ('vio-studio-assets', 'race/asset.png')",),
-            ("insert into public.vio_profiles(preferences) values ('{"background":{"bucket_id":"vio-backgrounds","storage_path":"race/bg.png"}}'::jsonb)",),
-        ]
-        for (statement,) in checks:
+    with connect() as seed:
+        seed.execute("insert into public.vio_storage_cleanup_queue(bucket_id, storage_path) values ('vio-studio-assets', 'race/asset.png'), ('vio-backgrounds', 'race/bg.png')")
+        seed.commit()
+    checks = [
+        "insert into public.vio_character_assets(bucket_id, storage_path) values ('vio-studio-assets', 'race/asset.png')",
+        "insert into public.vio_character_accessories(bucket_id, storage_path) values ('vio-studio-assets', 'race/asset.png')",
+        "insert into public.vio_profiles(preferences) values ('{\"background\":{\"bucket_id\":\"vio-backgrounds\",\"storage_path\":\"race/bg.png\"}}'::jsonb)",
+    ]
+    for statement in checks:
+        with connect() as conn:
             try:
                 conn.execute(statement)
+                conn.commit()
             except ObjectNotInPrerequisiteState:
                 conn.rollback()
             else:
                 raise AssertionError(f"pending cleanup did not block: {statement}")
-        conn.commit()
     print("PASS all metadata reference triggers reject pending objects")
 
 def test_processed_queue_releases_reservation():
