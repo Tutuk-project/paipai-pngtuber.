@@ -96,6 +96,7 @@ test("accessory upload is scoped to the selected owned character, not a Default 
   const handler = edge.match(/if \(action === "record_accessory"\)[\s\S]*?if \(action === "update_accessory"\)/)?.[0] || "";
   assert.match(handler, /body\.character_id/);
   assert.match(handler, /expectedPrefix/);
+  assert.match(handler, /pathParts.length !== 4/);
   assert.match(handler, /eq\("id", characterId\)\.eq\("user_id", user\.id\)/);
   assert.doesNotMatch(handler, /characters\/default|eq\("name", "Default"\)/);
 });
