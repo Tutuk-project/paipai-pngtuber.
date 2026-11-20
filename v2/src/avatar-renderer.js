@@ -61,6 +61,14 @@ export class AvatarRenderer {
         distort: { ...DEFAULTS.effects.distort, ...(preferences.effects?.distort || {}) }
       }
     };
+    const background = this.preferences.background;
+    if (background.mode === "video") {
+      this.setBackgroundImage(null);
+      this.setBackgroundVideo(background.src || null);
+    } else {
+      this.setBackgroundVideo(null);
+      this.setBackgroundImage(background.mode === "image" ? background.src || null : null);
+    }
     this.drawOnce();
   }
 
