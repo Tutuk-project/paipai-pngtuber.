@@ -31,6 +31,8 @@ Open **SQL Editor** in the Development project. Run each file once, in this exac
 4. `supabase/migrations/004_vio_background_media.sql`
 5. `supabase/migrations/005_vio_storage_cleanup_queue.sql`
 6. `supabase/migrations/006_vio_storage_cleanup_reference_guard.sql`
+7. `supabase/migrations/007_vio_security_advisor_hardening.sql`
+8. `supabase/migrations/008_move_rls_helpers_to_private_schema.sql`
 
 Use the SQL file contents from this branch. Do not paste all six into one query initially: applying them separately makes the first failing migration identifiable and prevents later migrations from running after an earlier failure.
 
