@@ -50,7 +50,7 @@ async function audit(db: SupabaseClient, actor: string | null, target: string | 
 
 async function signBackground(db: SupabaseClient, preferences: any) {
   const background = preferences?.background;
-  if (!background?.storage_path || background.bucket_id !== "vio-studio-assets") return preferences || {};
+  if (!background?.storage_path || background.bucket_id !== "vio-backgrounds") return preferences || {};
   const { data, error } = await db.storage.from(background.bucket_id).createSignedUrl(background.storage_path, 3600);
   if (error || !data?.signedUrl) return preferences || {};
   return { ...preferences, background: { ...background, src: data.signedUrl } };
@@ -387,26 +387,26 @@ Deno.serve(async (req) => {
       const size = Number(body.size_bytes);
       const allowed = ["image/png", "image/jpeg", "image/webp", "image/gif", "video/mp4", "video/webm"];
       const isVideo = mime.startsWith("video/");
-      const maxBytes = isVideo ? 62914560 : 20971520;
+      const maxBytes = isVideo ? 52428800 : 20971520;
       const prefix = `${user.id}/background/`;
       const parts = storagePath.split("/");
       if (!storagePath.startsWith(prefix) || parts.length !== 3 || parts.some(part => !part || part === "." || part === "..") || !allowed.includes(mime) || !Number.isSafeInteger(size) || size < 1 || size > maxBytes) return json({ ok: false, error: "Background asset metadata is invalid." }, 400);
       const fileName = parts[2];
-      const { data: objects, error: listError } = await db.storage.from("vio-studio-assets").list(`${user.id}/background`, { search: fileName, limit: 100 });
+      const { data: objects, error: listError } = await db.storage.from("vio-backgrounds").list(`${user.id}/background`, { search: fileName, limit: 100 });
       if (listError) throw listError;
       const stored = (objects || []).find((item: any) => item.name === fileName);
       if (!stored || Number(stored.metadata?.size || 0) !== size || (stored.metadata?.mimetype && stored.metadata.mimetype !== mime)) return json({ ok: false, error: "Uploaded background object does not match its metadata." }, 400);
       const { data: profile, error: profileError } = await db.from("vio_profiles").select("preferences").eq("user_id", user.id).maybeSingle();
       if (profileError) throw profileError;
       const previous = (profile?.preferences as any)?.background;
-      const background = { ...(previous || {}), mode: isVideo ? "video" : "image", bucket_id: "vio-studio-assets", storage_path: storagePath, mime_type: mime };
+      const background = { ...(previous || {}), mode: isVideo ? "video" : "image", bucket_id: "vio-backgrounds", storage_path: storagePath, mime_type: mime };
       const preferences = { ...(profile?.preferences || {}), background };
       const { error: saveError } = await db.from("vio_profiles").upsert({ user_id: user.id, preferences, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
       if (saveError) throw saveError;
-      const { data: signed, error: signError } = await db.storage.from("vio-studio-assets").createSignedUrl(storagePath, 3600);
+      const { data: signed, error: signError } = await db.storage.from("vio-backgrounds").createSignedUrl(storagePath, 3600);
       if (signError) throw signError;
       if (previous?.storage_path && previous.storage_path !== storagePath) {
-        const { error: cleanupError } = await db.storage.from("vio-studio-assets").remove([previous.storage_path]);
+        const { error: cleanupError } = await db.storage.from(previous.bucket_id || "vio-backgrounds").remove([previous.storage_path]);
         if (cleanupError) console.error("Old background cleanup failed", cleanupError.message);
       }
       await audit(db, user.id, user.id, "background_asset_updated", { mime_type: mime, size_bytes: size });
