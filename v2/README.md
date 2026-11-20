@@ -26,12 +26,14 @@ The package currently lives under `/v2/` on the development branch only. The rep
 
 ## Setup
 
-1. Copy `src/config.example.js` to `src/config.js`.
+Follow the full [Supabase Development setup guide](docs/SUPABASE-DEV-SETUP.md) before connecting a backend. It uses a separate Development project and explicitly avoids Supabase Live.
+
+1. Copy `src/config.example.js` to `src/config.js` and use only the separate Development project's URL and public publishable key.
 2. Fill `supabaseUrl` and the public `sb_publishable_...` key from the existing Supabase project. Never use a secret/service-role key in this file.
 3. In Supabase Auth settings, enable Anonymous Sign-Ins. Anonymous auth creates a persistent device session; users who clear browser storage or change devices need a new one-time pairing code from Admin. CAPTCHA / Turnstile is not wired into this frontend yet: integrate and test a challenge-token flow before enabling mandatory CAPTCHA or exposing anonymous sign-in broadly.
 4. Create a **separate Supabase Development project** for v2. Review and apply migrations `001_vio_studio_v2.sql` through `006_vio_storage_cleanup_reference_guard.sql` there in numerical order. They add v2 tables/policies, accessory metadata, the private `vio-studio-assets` and `vio-backgrounds` buckets, the server-only cleanup queue, and database guards that serialize cleanup reservations against new metadata references. They deliberately leave v1.0 tables and the `pngtuber-assets` bucket unchanged. Never use the production project for this initial integration test; none of these migrations has been applied to Supabase Live.
 5. In the Development project only, set a long random Edge Function secret named `VIO_ADMIN_BOOTSTRAP_TOKEN`. Keep it private. It is used once to bootstrap the first `paipai77` Admin account.
-6. Deploy the Edge Function directory `supabase/functions/vio-api` as `vio-api` to the Development project only.
+6. Deploy the Edge Function directory `supabase/functions/vio-api` as `vio-api` to the Development project only. The local Supabase CLI config is `supabase/config.toml`; always pass the explicit Development project reference when deploying.
 7. Open `/v2/`, enter `paipai77` and the one-time bootstrap token. After the first successful Admin bootstrap, remove `VIO_ADMIN_BOOTSTRAP_TOKEN` from the function secrets and redeploy the function.
 8. From Admin, create User / Tester accounts and provide each new user the generated one-time device pairing code privately. Returning use on that device requires only their username. A new device needs a new pairing code from Admin. Admin can revoke all paired devices and issue a replacement code if access needs to be recovered.
 
