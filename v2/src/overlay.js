@@ -39,6 +39,7 @@ function ensurePlayerRenderer(member, slotWidth) {
     playerCanvas.height = canvas.height;
   }
   renderer.setAssets(member.assets || {});
+  renderer.setAccessories(member.accessories || []);
   const overrides = member.overrides || {};
   const preferences = { ...(member.preferences || {}), scale: overrides.scale ?? member.preferences?.scale ?? 1 };
   preferences.offsetX = Math.max(-100, Math.min(100, Number(overrides.x) || 0)) * width * 0.004;
