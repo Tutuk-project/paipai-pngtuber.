@@ -242,7 +242,7 @@ export class AvatarRenderer {
     canvas.height = height + pad * 2;
     const ctx = canvas.getContext("2d");
     const shadow = ids.includes("shadow") ? effects.shadow : null;
-    const bloom = ids.includes("bloom") ? effects.bloom : null;
+    const bloom = ids.includes("bloom") ? (effects.bloom || effects.glow) : null;
     if (shadow) {
       ctx.save();
       ctx.shadowColor = shadow.color || "#101010";
@@ -355,8 +355,9 @@ export class AvatarRenderer {
       ctx.shadowOffsetY = Math.max(0, Number(shadow.intensity) || 0) * 0.1;
     }
     if (ids.includes("bloom")) {
-      ctx.shadowColor = effects.bloom.color || "#ffd7b8";
-      ctx.shadowBlur = 12 + Math.max(0, Number(effects.bloom.intensity) || 0) * 0.5;
+      const bloom = effects.bloom || effects.glow;
+      ctx.shadowColor = bloom.color || "#ffd7b8";
+      ctx.shadowBlur = 12 + Math.max(0, Number(bloom.intensity) || 0) * 0.5;
     }
     const px = sprite.pad * scale;
     this.drawEffectSprite(ctx, sprite, -width / 2 - px, -height / 2 - px, width + px * 2, height + px * 2, ids, now);
@@ -396,8 +397,9 @@ export class AvatarRenderer {
         ctx.shadowOffsetY = Math.max(0, Number(effects.shadow.intensity) || 0) * 0.1;
       }
       if (ids.includes("bloom")) {
-        ctx.shadowColor = effects.bloom.color || "#ffd7b8";
-        ctx.shadowBlur = 12 + Math.max(0, Number(effects.bloom.intensity) || 0) * 0.5;
+        const bloom = effects.bloom || effects.glow;
+        ctx.shadowColor = bloom.color || "#ffd7b8";
+        ctx.shadowBlur = 12 + Math.max(0, Number(bloom.intensity) || 0) * 0.5;
       }
       const px = sprite.pad * (width / Math.max(1, sprite.width));
       const py = sprite.pad * (height / Math.max(1, sprite.height));
