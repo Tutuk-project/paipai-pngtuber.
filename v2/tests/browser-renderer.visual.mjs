@@ -91,10 +91,14 @@ const html = `<!doctype html>
   performanceRenderer.setPreferences({ ...common, effects: { enabled: true, stickerEffectsEnabled: true, ...effectConfigs } });
   await Promise.all([...performanceRenderer.images.values()].filter(Boolean).map(image => image.decode()));
   performanceRenderer.setState("talking");
+  const performanceContext = performanceCanvas.getContext("2d");
   const performanceStart = performance.now();
-  for (let frame = 0; frame < 12; frame++) performanceRenderer.render(1700 + frame * 34);
-  const performancePixels = performanceCanvas.getContext("2d").getImageData(0, 0, performanceCanvas.width, performanceCanvas.height).data;
+  for (let frame = 0; frame < 12; frame++) {
+    performanceRenderer.render(1700 + frame * 34);
+    performanceContext.getImageData(540, 960, 1, 1);
+  }
   const performanceElapsedMs = performance.now() - performanceStart;
+  const performancePixels = performanceContext.getImageData(0, 0, performanceCanvas.width, performanceCanvas.height).data;
   let performanceVisiblePixels = 0;
   for (let i = 3; i < performancePixels.length; i += 16) if (performancePixels[i] > 0) performanceVisiblePixels++;
   window.__vioVisual = {
