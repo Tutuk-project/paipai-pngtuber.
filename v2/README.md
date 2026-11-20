@@ -18,22 +18,18 @@ This is the first modular v2.0 foundation for the existing PNGTuber project. It 
 
 ## Important state
 
-This is a **development foundation**, not a production release and not yet connected to your live Supabase project or GitHub repository. The legacy avatar/effects renderer from the 3.6 MB v1.0 `index.html` still needs to be ported into the new component boundary. The source file is currently available in the ChatGPT Library as indexed text but its raw bytes could not be materialized into the working directory. Do not replace the currently published site with this package until that renderer port and the integration tests pass.
+This is a **development foundation**, not a production release. The source is stored on GitHub in branch `develop/vio-studio-v2` under `/v2/`. It has not been connected to or deployed on the live Supabase project, and GitHub Pages production settings remain unchanged. The legacy avatar/effects renderer from the 3.6 MB v1.0 `index.html` is only partially ported. Do not replace the currently published site with this package until renderer parity and real integration tests pass.
 
 ## Repository strategy
 
-After the GitHub connection is available and the repository has been renamed to `Vio-Studio`, place this package under `/v2/` first. That provides a test URL while leaving the current root page, Offline v1.7 file and v1.0 behavior intact:
-
-`https://<github-username>.github.io/Vio-Studio/v2/`
-
-When v2.0 passes testing, promote it to the repository root in a separate deployment change.
+The package currently lives under `/v2/` on the development branch only. The repository has not been renamed, and the Pages deployment source has not been changed to this branch. Confirm the Pages build source and project URL before enabling a v2 test deployment. Keep the current root page and Offline v1.7 / Online v1.0 baselines unchanged. When v2.0 passes testing, promote it in a separate deployment change.
 
 ## Setup
 
 1. Copy `src/config.example.js` to `src/config.js`.
 2. Fill `supabaseUrl` and the public `sb_publishable_...` key from the existing Supabase project. Never use a secret/service-role key in this file.
 3. In Supabase Auth settings, enable Anonymous Sign-Ins. Anonymous auth creates a persistent device session; users who clear browser storage or change devices need a new one-time pairing code from Admin. CAPTCHA / Turnstile is not wired into this frontend yet: integrate and test a challenge-token flow before enabling mandatory CAPTCHA or exposing anonymous sign-in broadly.
-4. Review `supabase/migrations/001_vio_studio_v2.sql` against the existing project, then apply it. The migration creates new `vio_*` tables and a new private `vio-studio-assets` bucket. It deliberately leaves v1.0 tables and the `pngtuber-assets` bucket unchanged.
+4. Review migrations `001_vio_studio_v2.sql`, `002_vio_studio_v2_security_hardening.sql`, and `003_vio_character_accessories.sql` against the existing project before applying them. They add v2 tables/policies and the private `vio-studio-assets` bucket. They deliberately leave v1.0 tables and the `pngtuber-assets` bucket unchanged. None of these migrations has been applied to live Supabase.
 5. Set a long random Edge Function secret named `VIO_ADMIN_BOOTSTRAP_TOKEN`. Keep it private. It is used once to bootstrap the first `paipai77` Admin account.
 6. Deploy the Edge Function directory `supabase/functions/vio-api` as `vio-api`.
 7. Open `/v2/`, enter `paipai77` and the one-time bootstrap token. After the first successful Admin bootstrap, remove `VIO_ADMIN_BOOTSTRAP_TOKEN` from the function secrets and redeploy the function.
@@ -59,7 +55,7 @@ The migration adds private-topic authorization policies for room members and OBS
 - Confirm repository rename and GitHub Pages source settings.
 - Apply SQL to the existing Supabase project after schema review.
 - Configure and deploy `vio-api`.
-- Add the original canvas renderer and port avatar effects/accessories/background/resolution support.
+- Complete renderer parity: background image/video import, custom resolution controls, direct accessory drag positioning, legacy per-state/per-target effect controls, and remaining v1.0 motion/effect behavior.
 - Load saved profile preferences and selected character from cloud on sign-in.
 - Expand the dedicated storage browser, user filtering/pagination and full audit-log history; current build already includes basic user/profile/asset inspection and the recent audit viewer.
 - Verify room position/scale overrides against real 2-user and 4-user layouts on OBS and mobile Browser Sources.
@@ -81,7 +77,11 @@ Run:
 The development copy now includes additional safeguards:
 - Audit-log write failures are surfaced instead of silently ignored.
 - OBS token rotation revokes previously registered overlay devices.
-- Private Realtime authorization requires an active, unexpired room.
+- Private Realtime authorization requires an active, unexpired room for members and OBS overlay devices.
+- Cross-account Admin profile/character/asset/Storage access is routed through audited Edge Function support actions rather than broad client-side RLS exceptions.
+- Admin bootstrap is serialized and constrained to a single Admin row.
+- OBS overlay API rejects expired rooms before registering overlay devices.
+- Disabling a user ends their active support-view sessions.
 - Support View rejects inactive accounts and Admin targets.
 - Asset metadata validates path segments, size and allowed expressions.
 - Account deletion halts when Storage/Auth cleanup fails.
@@ -92,4 +92,11 @@ These are local source changes only. The migration and Edge Function have **not*
 
 ## Renderer migration update
 
-A first modular `src/avatar-renderer.js` pass is now wired into the v2 editor and OBS overlay. It supports expression/blink selection, scale, mirror, bounce, sway, breathing, transparent/solid/gradient backgrounds, and basic glow/shadow/stroke/filter/distortion effects. This is not full v1.0 parity yet: accessory import/placement/per-accessory effects, background image/video import, custom resolution controls, and device/OBS visual regression remain outstanding.
+A modular `src/avatar-renderer.js` is wired into the v2 editor and OBS overlay. It supports expression/blink selection, scale, mirror, bounce, sway, breathing, transparent/solid/gradient backgrounds, and basic glow/shadow/stroke/filter/distortion effects. Character accessories now have a separate private metadata table, PNG/WebP upload, per-item position and size controls, mirror/follow/effects toggles, and signed asset delivery to collaboration and OBS snapshots. This remains partial v1.0 parity: direct drag positioning, background image/video import, custom resolution controls, full per-accessory effect tuning, and device/OBS visual regression remain outstanding.
+
+## 2026-11-20 GitHub security and accessory CI
+
+- GitHub Actions workflow: `.github/workflows/vio-v2-ci.yml`.
+- Latest verified run at this checkpoint: 20 tests passed, 0 failed, 0 skipped.
+- Regression coverage includes security policy checks, expired-room Realtime checks, single-Admin bootstrap, overlay expiry, and accessory cloud lifecycle/render wiring.
+- Migrations 002 and 003 and the Edge Function updates remain development source only; they have not been applied/deployed to live Supabase.
