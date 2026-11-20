@@ -111,6 +111,26 @@ test("modular avatar renderer is wired into editor and OBS overlay", () => {
   for (const feature of ["glow", "shadow", "stroke", "filter", "distort"]) assert.ok(renderer.includes(feature));
 });
 
+test("portrait and custom output resolutions are shared by editor, room and OBS", () => {
+  const app = read("src/app.js");
+  const overlay = read("src/overlay.js");
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const renderer = read("src/avatar-renderer.js");
+  const index = read("index.html");
+  const obs = read("overlay.html");
+  assert.ok(app.includes("TikTok Portrait"));
+  assert.ok(app.includes("Custom dimensions"));
+  assert.ok(app.includes("profilePreferences.outputWidth"));
+  assert.ok(app.includes("member.is_host"));
+  assert.ok(overlay.includes("member.is_host"));
+  assert.ok(overlay.includes("canvas.style.aspectRatio"));
+  assert.ok(edge.includes('"outputWidth", "outputHeight"'));
+  assert.ok(edge.includes("member.is_host"));
+  assert.ok(renderer.includes("outputWidth: 1080, outputHeight: 1920"));
+  assert.ok(index.includes('id="avatarCanvas" width="1080" height="1920"'));
+  assert.ok(obs.includes('id="stage" width="1080" height="1920"'));
+});
+
 test("private background media upload is owner-scoped and signed for editor, collaboration and OBS", () => {
   const app = read("src/app.js");
   const overlay = read("src/overlay.js");
