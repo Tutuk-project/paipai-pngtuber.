@@ -70,3 +70,15 @@ test("accessories are included in collaboration and OBS snapshots and rendered b
   assert.ok(overlay.includes("renderer.setAccessories(member.accessories || [])"));
   assert.ok(renderer.includes("item.follow !== false"));
 });
+
+test("character library actions exist and expression uploads are bound to an owned character", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  for (const action of ["character_library", "create_character_draft", "save_character", "set_active_character", "delete_character"]) {
+    assert.ok(edge.includes('action === "' + action + '"'), "missing character action " + action);
+  }
+  const record = edge.match(/if \(action === "record_asset"\)[\s\S]*?if \(action === "record_accessory"\)/)?.[0] || "";
+  assert.match(record, /body\.character_id/);
+  assert.match(record, /eq\("id", characterId\)\.eq\("user_id", user\.id\)/);
+  assert.match(record, /expectedPath/);
+  assert.doesNotMatch(record, /eq\("name", "Default"\)/);
+});
