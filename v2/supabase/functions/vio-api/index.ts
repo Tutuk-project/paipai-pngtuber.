@@ -531,7 +531,11 @@ Deno.serve(async (req) => {
         const job = await enqueueStorageCleanup(db, asset.bucket_id, asset.storage_path, admin.id, targetId, "admin_support_accessory_delete");
         const { error: rowError } = await db.from("vio_character_accessories").delete().eq("id", assetId).eq("user_id", targetId);
         if (rowError) {
-          await db.from("vio_storage_cleanup_queue").delete().eq("id", job.id);
+          const { error: cancelError } = await db.from("vio_storage_cleanup_queue").update({
+            processed_at: new Date().toISOString(),
+            last_error: "Cancelled because accessory metadata deletion failed."
+          }).eq("id", job.id);
+          if (cancelError) throw new Error("Metadata deletion failed and cleanup job cancellation also failed.");
           throw rowError;
         }
         const cleanup = await processStorageCleanup(db, job);
@@ -786,7 +790,11 @@ Deno.serve(async (req) => {
       const job = await enqueueStorageCleanup(db, accessory.bucket_id, accessory.storage_path, user.id, user.id, "user_accessory_delete");
       const { error: rowError } = await db.from("vio_character_accessories").delete().eq("id", accessoryId).eq("user_id", user.id);
       if (rowError) {
-        await db.from("vio_storage_cleanup_queue").delete().eq("id", job.id);
+        const { error: cancelError } = await db.from("vio_storage_cleanup_queue").update({
+          processed_at: new Date().toISOString(),
+          last_error: "Cancelled because accessory metadata deletion failed."
+        }).eq("id", job.id);
+        if (cancelError) throw new Error("Metadata deletion failed and cleanup job cancellation also failed.");
         throw rowError;
       }
       const cleanup = await processStorageCleanup(db, job);
