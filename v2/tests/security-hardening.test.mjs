@@ -16,7 +16,7 @@ test("cross-account profile, character, asset and storage access is not granted 
     "vio_storage_delete_self",
   ]) assert.match(sql, new RegExp("create policy " + policy + "\\b", "i"));
   assert.doesNotMatch(sql, /using\s*\([^)]*vio_is_admin\(\)/i);
-  assert.match(sql, /Admin cross-account inspection\/mutation must go through the audited Edge Function/i);
+  assert.match(sql, /Admin cross-account reads are served by the Edge Function/i);
 });
 
 test("private Realtime reads and writes require an active, unexpired room", () => {
