@@ -778,7 +778,7 @@ function renderSettings(menuId) {
     const profileDevice = document.createElement("select"); profileDevice.id = "profileDevice"; profileDevice.className = "select-input"; profileDevice.innerHTML = '<option value="">System default</option>'; profileDevice.value = profilePreferences.deviceId || "";
     profileDeviceField.append(profileDeviceLabel, profileDevice); grid.append(profileDeviceField);
     const scale = settingField("Default avatar scale", "profileScale", String(profilePreferences.scale ?? 1), "Default scale used when joining a room.", "range");
-    const scaleInput = scale.querySelector("input"); scaleInput.min = "0.2"; scaleInput.max = "2.2"; scaleInput.step = "0.05";
+    const scaleInput = scale.querySelector("input"); scaleInput.min = "0"; scaleInput.max = "2"; scaleInput.step = "0.05";
     const sensitivity = settingField("Default mic sensitivity", "profileSensitivity", String(profilePreferences.sensitivity ?? 1), "Adaptive threshold multiplier.", "range");
     const sensitivityInput = sensitivity.querySelector("input"); sensitivityInput.min = "0.5"; sensitivityInput.max = "2"; sensitivityInput.step = "0.05";
     const boost = settingField("Default mic booster (dB)", "profileBoost", String(profilePreferences.boostDb ?? 6), "Digital gain, limited to +24 dB.", "range");
@@ -950,7 +950,8 @@ async function saveProfilePreferences() {
   const displayName = $("profileDisplayName").value.trim();
   const preferences = {
     ...profilePreferences,
-    scale: Number($("profileScale").value),
+    scale: Math.max(0, Math.min(2, Number($("profileScale").value) || 1)),
+    avatarScalePercent: Math.round((Math.max(0, Math.min(2, Number($("profileScale").value) || 1)) - 1) * 100),
     sensitivity: Number($("profileSensitivity").value),
     boostDb: Number($("profileBoost").value),
     deviceId: $("profileDevice").value,
@@ -959,6 +960,8 @@ async function saveProfilePreferences() {
     await api("profile_save", { display_name: displayName, preferences });
     currentUser.display_name = displayName;
     profilePreferences = preferences;
+    avatarScalePercent = preferences.avatarScalePercent;
+    updateAvatarScaleWidget();
     drawPreview();
     const deviceChanged = roomOverrides.deviceId !== preferences.deviceId;
     roomOverrides = { ...roomOverrides, scale: preferences.scale, sensitivity: preferences.sensitivity, boostDb: preferences.boostDb, deviceId: preferences.deviceId };
@@ -1337,7 +1340,7 @@ function drawPreview() {
   const height = Math.max(320, Math.min(3840, Math.round(Number(profilePreferences.outputHeight) || 1920)));
   if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
   const stageFrame = canvas.closest(".stage-frame");
-  if (stageFrame) stageFrame.style.aspectRatio = "4 / 3";
+  if (stageFrame) { stageFrame.style.aspectRatio = `${width} / ${height}`; stageFrame.style.height = "auto"; }
   updateAvatarScaleWidget();
   const roomStage = $("roomStage");
   if (roomStage && (roomStage.width !== width || roomStage.height !== height)) {
