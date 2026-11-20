@@ -10,7 +10,7 @@ const EFFECT_DEFAULTS = {
   shake: { enabled: false, intensity: 55, color: "#ffd7b8", thickness: 8, invert: false, states: [...EFFECT_STATES], targets: ["avatar", "accessories"] }
 };
 const DEFAULTS = {
-  scale: 1, mirror: true, bounce: 0.035, sway: 0, breathing: 0, blinkRate: 4,
+  scale: 1, mirror: true, bounce: 0.035, squash: 0.07, sway: 0, breathing: 0, blinkRate: 4,
   fps: 30, outputWidth: 1080, outputHeight: 1920, offsetX: 0, offsetY: 0,
   background: { mode: "transparent", color: "#11151b", color1: "#254c4a", color2: "#e2b48c", angle: 135 },
   effects: { enabled: false, stickerEffectsEnabled: true, ...structuredClone(EFFECT_DEFAULTS) }
@@ -492,17 +492,21 @@ export class AvatarRenderer {
     const bounce = talking ? Math.abs(Math.sin(phase * Math.PI)) * (Number(p.bounce) || 0) * height : Math.sin(now / 520) * 0.006 * height;
     const sway = Number(p.sway) || 0;
     const rotation = sway ? Math.sin(now / (talking ? 570 : 1400)) * sway * Math.PI / 180 : 0;
+    const squashAmount = Math.max(0, Math.min(0.25, Number(p.squash ?? 0.07)));
+    const impact = talking ? Math.pow(Math.max(0, Math.cos(phase * Math.PI * 2)), 8) : 0;
+    const squashX = 1 + squashAmount * 0.45 * impact;
+    const squashY = 1 - squashAmount * impact;
     const shake = ids.includes("shake") ? Math.max(0, Math.min(1, Number(effects.shake.intensity) / 100 || 0.55)) : 0;
     const shakeX = shake ? Math.sin(now / 19) * Math.cos(now / 31) * shake * 24 : 0;
     const shakeY = shake ? Math.cos(now / 17) * Math.sin(now / 27) * shake * 24 : 0;
     const centerX = W / 2 + (Number(p.offsetX) || 0) + shakeX;
     const centerY = H / 2 + (Number(p.offsetY) || 0) - bounce + shakeY;
-    this.avatarMotion = { centerX, centerY, rotation, scaleX: scale, scaleY: scale, mirror: p.mirror !== false, shakeX, shakeY };
+    this.avatarMotion = { centerX, centerY, rotation, scaleX: squashX, scaleY: squashY, mirror: p.mirror !== false, shakeX, shakeY };
     const sprite = this.effectSprite(image, ids);
     ctx.save();
     ctx.translate(centerX, centerY);
     ctx.rotate(rotation);
-    ctx.scale(p.mirror === false ? 1 : -1, 1);
+    ctx.scale((p.mirror === false ? 1 : -1) * squashX, squashY);
     const shadow = ids.includes("shadow") ? effects.shadow : null;
     if (shadow) {
       ctx.shadowColor = shadow.color || "#101010";
