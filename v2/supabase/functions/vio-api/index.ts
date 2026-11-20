@@ -461,12 +461,14 @@ Deno.serve(async (req) => {
       if (saveError) throw saveError;
       const { data: signed, error: signError } = await db.storage.from("vio-backgrounds").createSignedUrl(storagePath, 3600);
       if (signError) throw signError;
+      let cleanupPending = false;
       if (previous?.storage_path && previous.storage_path !== storagePath) {
-        const { error: cleanupError } = await db.storage.from(previous.bucket_id || "vio-backgrounds").remove([previous.storage_path]);
-        if (cleanupError) console.error("Old background cleanup failed", cleanupError.message);
+        const oldJob = await enqueueStorageCleanup(db, previous.bucket_id || "vio-backgrounds", previous.storage_path, user.id, user.id, "background_replaced");
+        const cleanup = await processStorageCleanup(db, oldJob);
+        cleanupPending = !cleanup.ok;
       }
-      await audit(db, user.id, user.id, "background_asset_updated", { mime_type: mime, size_bytes: size });
-      return json({ ok: true, background: { ...background, src: signed.signedUrl } });
+      await audit(db, user.id, user.id, "background_asset_updated", { mime_type: mime, size_bytes: size, cleanup_pending: cleanupPending });
+      return json({ ok: true, cleanup_pending: cleanupPending, background: { ...background, src: signed.signedUrl } });
     }
 
     if (action === "profile_save") {
@@ -543,11 +545,18 @@ Deno.serve(async (req) => {
       } else {
         const { data: asset, error: assetError } = await db.from("vio_character_assets").select("id,bucket_id,storage_path,expression").eq("id", assetId).eq("user_id", targetId).single();
         if (assetError) throw assetError;
-        const { error: storageError } = await db.storage.from(asset.bucket_id).remove([asset.storage_path]);
-        if (storageError) throw storageError;
+        const job = await enqueueStorageCleanup(db, asset.bucket_id, asset.storage_path, admin.id, targetId, "admin_support_expression_delete");
         const { error: rowError } = await db.from("vio_character_assets").delete().eq("id", assetId).eq("user_id", targetId);
-        if (rowError) throw rowError;
-        await audit(db, admin.id, targetId, "admin_asset_deleted", { asset_id: assetId, expression: asset.expression, support_session_id: session.id });
+        if (rowError) {
+          const { error: cancelError } = await db.from("vio_storage_cleanup_queue").update({
+            processed_at: new Date().toISOString(),
+            last_error: "Cancelled because expression metadata deletion failed."
+          }).eq("id", job.id);
+          if (cancelError) throw new Error("Expression metadata deletion failed and cleanup job cancellation also failed.");
+          throw rowError;
+        }
+        const cleanup = await processStorageCleanup(db, job);
+        await audit(db, admin.id, targetId, "admin_asset_deleted", { asset_id: assetId, expression: asset.expression, cleanup_pending: !cleanup.ok, support_session_id: session.id });
       }
       return json({ ok: true });
     }
