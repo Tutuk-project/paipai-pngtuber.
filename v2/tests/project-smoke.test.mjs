@@ -110,3 +110,23 @@ test("modular avatar renderer is wired into editor and OBS overlay", () => {
   for (const feature of ["drawBackground", "drawAvatar", "drawAccessories", "blinkDelay"]) assert.ok(renderer.includes(feature));
   for (const feature of ["glow", "shadow", "stroke", "filter", "distort"]) assert.ok(renderer.includes(feature));
 });
+
+test("private background media upload is owner-scoped and signed for editor, collaboration and OBS", () => {
+  const app = read("src/app.js");
+  const overlay = read("src/overlay.js");
+  const renderer = read("src/avatar-renderer.js");
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const migration = read("supabase/migrations/004_vio_background_media.sql");
+  assert.ok(app.includes('option value="image">Image / GIF'));
+  assert.ok(app.includes('option value="video">Video'));
+  assert.ok(app.includes('from("vio-backgrounds").upload'));
+  assert.ok(app.includes('api("record_background_asset"'));
+  assert.ok(edge.includes('action === "record_background_asset"'));
+  assert.ok(edge.includes('storage.from("vio-backgrounds").list'));
+  assert.ok(edge.includes("signBackground(db"));
+  assert.ok(migration.includes("'vio-backgrounds'"));
+  assert.ok(migration.includes("public = false"));
+  assert.ok(renderer.includes("setBackgroundVideo(src)"));
+  assert.ok(overlay.includes("renderer.setBackgroundVideo(background.mode === \"video\" ? background.src : null)"));
+  assert.ok(app.includes("entry.renderer.setBackgroundImage(background.mode === \"image\" ? background.src : null)"));
+});
