@@ -172,10 +172,11 @@ Deno.serve(async (req) => {
       if (!authUser.is_anonymous) return json({ ok: false, error: "Bootstrap only accepts a fresh anonymous device session." }, 403);
       const username = String(body.username || "").trim().toLowerCase();
       const supplied = String(body.bootstrap_token || "");
-      // Normalize only outer whitespace from Dashboard copy/paste.
+      // Dashboard copy/paste can accidentally retain surrounding whitespace.
+      // Normalize only outer whitespace; the token itself remains case-sensitive.
       const expected = (Deno.env.get("VIO_ADMIN_BOOTSTRAP_TOKEN") || "").trim();
       if (username !== "paipai77") return json({ ok: false, code: "BOOTSTRAP_USERNAME_INVALID", error: "Username bootstrap tidak valid. Gunakan akun Admin awal yang telah ditentukan." }, 400);
-      if (!expected || expected.length < 32) return json({ ok: false, code: "BOOTSTRAP_SECRET_MISSING", error: "Secret bootstrap belum dikonfigurasi dengan benar pada Supabase Development Edge Function." }, 503);
+      if (!expected || expected.length < 32) return json({ ok: false, code: "BOOTSTRAP_SECRET_MISSING", error: "Secret bootstrap belum dikonfigurasi dengan benar pada Supabase Development Edge Function. Atur ulang VIO_ADMIN_BOOTSTRAP_TOKEN." }, 503);
       const suppliedBytes = new TextEncoder().encode(supplied);
       const expectedBytes = new TextEncoder().encode(expected);
       let tokenMatches = suppliedBytes.length === expectedBytes.length;
@@ -185,7 +186,8 @@ Deno.serve(async (req) => {
         tokenMatches = diff === 0;
       }
       if (suppliedBytes.length < 32 || !tokenMatches) return json({
-        ok: false, code: "BOOTSTRAP_TOKEN_INVALID",
+        ok: false,
+        code: "BOOTSTRAP_TOKEN_INVALID",
         error: "Token bootstrap tidak cocok dengan secret di Supabase Development. Pastikan token dimasukkan tanpa tanda kutip, spasi, atau baris baru.",
         diagnostics: { supplied_length: suppliedBytes.length, configured_length: expectedBytes.length, outer_whitespace_normalized: true }
       }, 403);
@@ -834,6 +836,20 @@ Deno.serve(async (req) => {
         return { id: item.id, name: item.name, src: data.signedUrl, x: item.x, y: item.y, w: item.w, h: item.h, mirror: item.mirror, follow: item.follow_avatar, effectsEnabled: item.effects_enabled, sort_order: item.sort_order };
       }));
       return json({ ok: true, assets: signedAssets, accessories: signedAccessories.filter(Boolean), background: signedPreferences.background || null });
+    }
+
+    if (action === "get_my_active_room") {
+      const user = requireUser();
+      const { data, error } = await db.from("vio_room_members")
+        .select("room_id,vio_rooms!inner(id,room_code,capacity,purpose,status,host_user_id,expires_at)")
+        .eq("user_id", user.id)
+        .eq("vio_rooms.status", "active")
+        .gt("vio_rooms.expires_at", new Date().toISOString())
+        .limit(1)
+        .maybeSingle();
+      if (error) throw error;
+      const room = (data as any)?.vio_rooms || null;
+      return json({ ok: true, room });
     }
 
     if (action === "create_room") {
