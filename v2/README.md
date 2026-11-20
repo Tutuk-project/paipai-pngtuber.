@@ -96,9 +96,9 @@ A modular `src/avatar-renderer.js` is wired into the v2 editor and OBS overlay. 
 
 ## 2026-11-20 Vio-Studio v2.0 checkpoints and CI
 
-- Latest checkpoint: `docs/CHECKPOINT-08-2026-11-20.md`.
-- Previous checkpoint: `docs/CHECKPOINT-07-2026-11-20.md`.
+- Latest checkpoint: `docs/CHECKPOINT-09-2026-11-20.md`.
+- Previous checkpoints: `docs/CHECKPOINT-08-2026-11-20.md` and `docs/CHECKPOINT-07-2026-11-20.md`.
 - GitHub Actions workflow: `.github/workflows/vio-v2-ci.yml`.
-- Latest verified run: `44735504764`, 31 tests passed, 0 failed, 0 skipped.
-- Coverage includes security policy checks, expired-room Realtime checks, Admin bootstrap, accessory lifecycle and transforms, collaboration preview animation, private background upload validation, and signed background delivery.
+- Latest verified run: `44736086589`, 32 tests passed, 0 failed, 0 skipped.
+- Coverage includes security policy checks, expired-room Realtime checks, Admin bootstrap, accessory lifecycle/transforms, collaboration animation, private background media validation/signed delivery, portrait/custom output dimensions, host-selected room resolution, and mobile pixel-budget validation.
 - Migrations 001–004 and Edge Function updates remain development source only; they have not been applied/deployed to live Supabase.
