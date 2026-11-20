@@ -100,3 +100,43 @@ test("accessory upload is scoped to the selected owned character, not a Default 
   assert.match(handler, /eq\("id", characterId\)\.eq\("user_id", user\.id\)/);
   assert.doesNotMatch(handler, /characters\/default|eq\("name", "Default"\)/);
 });
+
+
+test("saved profile audio device is loaded before microphone capture starts", () => {
+  const app = read("src/app.js");
+  const login = app.match(/currentUser = identity\.user;[\s\S]*?footerSession/)?.[0] || "";
+  assert.ok(login.indexOf("await loadCurrentProfile()") >= 0);
+  assert.ok(login.indexOf("await startMicrophone({ silent: true })") > login.indexOf("await loadCurrentProfile()"));
+});
+
+test("room controls reset from profile defaults before applying room-scoped overrides", () => {
+  const app = read("src/app.js");
+  const loader = app.match(/async function loadRoomMembers\(\)[\s\S]*?function renderRoomParticipants/)?.[0] || "";
+  assert.match(loader, /profileRoomDefaults/);
+  assert.match(loader, /roomOverrides = \{ \.\.\.profileRoomDefaults, \.\.\.\(ownMember\?\.overrides \|\| \{\}\) \}/);
+  assert.match(loader, /renderRoomControls\(\)/);
+  assert.match(loader, /currentDeviceId !== nextDeviceId/);
+});
+
+test("new Solo OBS rooms publish the current microphone state after Realtime subscription", () => {
+  const app = read("src/app.js");
+  const generator = app.match(/async function generateOverlayLink[\s\S]*?async function /)?.[0] || "";
+  assert.match(generator, /if \(!micEnabled\) await startMicrophone\(\)/);
+  assert.match(generator, /await subscribeRoom\(room\.id\);[\s\S]*?await loadRoomMembers\(\);[\s\S]*?await broadcastPlayerState\(currentMicState\)/);
+});
+
+test("collaboration and OBS snapshots pass profile preferences and active-character assets to the shared renderer", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const app = read("src/app.js");
+  const overlay = read("src/overlay.js");
+  for (const action of ["room_members", "overlay_connect"]) {
+    const start = edge.indexOf('if (action === "' + action + '")');
+    const next = edge.indexOf('if (action === "', start + 10);
+    const handler = start >= 0 ? edge.slice(start, next > start ? next : undefined) : "";
+    assert.match(handler, /active_character_id/);
+    assert.match(handler, /preferences/);
+    assert.match(handler, /vio_character_assets/);
+  }
+  assert.match(app, /entry\.renderer\.setPreferences\(preferences\)/);
+  assert.match(overlay, /renderer\.setPreferences\(preferences\)/);
+});
