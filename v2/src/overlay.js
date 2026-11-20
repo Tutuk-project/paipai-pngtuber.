@@ -1,10 +1,15 @@
 import { AvatarRenderer } from "./avatar-renderer.js";
+import { AudioEngine } from "./audio-engine.js";
 
 let config;
 let supabase;
 let channel;
 let roomId;
 let overlayToken;
+let roomPurpose = "collaboration";
+let localMicEngine = null;
+let localMicUserId = null;
+let localMicActive = false;
 let members = [];
 let refreshTimer = 0;
 const states = new Map();
@@ -71,6 +76,45 @@ function ensurePlayerRenderer(member, slotWidth) {
   return entry;
 }
 
+function updateLocalMicState(state) {
+  if (!localMicUserId || !["idle", "talking"].includes(state)) return;
+  states.set(localMicUserId, state);
+  const member = members.find(item => item.user_id === localMicUserId);
+  if (member) member.state = state;
+  render();
+}
+
+async function startInvisibleSoloMicrophone() {
+  if (roomPurpose !== "personal_overlay" || !localMicUserId || localMicEngine) return;
+  const host = members.find(member => member.user_id === localMicUserId);
+  // Capture from the OBS/browser host itself. No controls are added to overlay.html;
+  // the browser may request microphone permission once, then capture remains invisible.
+  localMicEngine = new AudioEngine({
+    deviceId: host?.preferences?.deviceId || "",
+    sensitivity: Number(host?.preferences?.sensitivity ?? 1),
+    boostDb: Number(host?.preferences?.boostDb ?? 6)
+  });
+  localMicEngine.addEventListener("state", event => updateLocalMicState(event.detail.state));
+  localMicEngine.addEventListener("status", event => {
+    const { status, error } = event.detail;
+    if (debugMode) setStatus(
+      status === "active" ? "Solo mic active · clean overlay" : `Solo mic ${status}${error?.message ? `: ${error.message}` : ""}`,
+      status === "error",
+      true
+    );
+  });
+  try {
+    await localMicEngine.start();
+    localMicActive = true;
+    updateLocalMicState(localMicEngine.state || "idle");
+    if (debugMode) setStatus("Solo mic active · no overlay controls", false, true);
+  } catch (error) {
+    localMicActive = false;
+    console.warn("Solo OBS microphone capture unavailable:", error);
+    if (debugMode) setStatus(`Solo mic unavailable: ${error.message}`, true, true);
+  }
+}
+
 function render() {
   if (!canvas || !ctx) return;
   ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -86,11 +130,18 @@ function render() {
 
 async function refreshMembers() {
   const result = await api("overlay_connect", { room_id: roomId, overlay_token: overlayToken });
+  roomPurpose = result.room?.purpose || roomPurpose;
   members = result.members || [];
   const hostMember = members.find(member => member.is_host) || members[0];
+  if (hostMember) localMicUserId = hostMember.user_id;
   const output = hostMember?.preferences || {};
-  const width = Math.max(320, Math.min(3840, Math.round(Number(output.outputWidth) || 1080)));
-  const height = Math.max(320, Math.min(3840, Math.round(Number(output.outputHeight) || 1920)));
+  const isCollaborationRoom = roomPurpose === "collaboration";
+  const width = isCollaborationRoom
+    ? 1920
+    : Math.max(320, Math.min(3840, Math.round(Number(output.outputWidth) || 1080)));
+  const height = isCollaborationRoom
+    ? 1080
+    : Math.max(320, Math.min(3840, Math.round(Number(output.outputHeight) || 1920)));
   if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
   canvas.style.aspectRatio = `${width} / ${height}`;
 
@@ -103,7 +154,10 @@ async function refreshMembers() {
     }
   }
   members.forEach(member => {
-    states.set(member.user_id, member.state || "idle");
+    const state = localMicActive && member.user_id === localMicUserId
+      ? (states.get(member.user_id) || "idle")
+      : (member.state || "idle");
+    states.set(member.user_id, state);
     ensurePlayerRenderer(member, canvas.width / Math.max(1, Math.min(4, members.length)));
   });
   render();
@@ -157,6 +211,7 @@ async function boot() {
         const seq = Number(payload.seq) || 0;
         if (seq && seq <= (stateSequences.get(payload.user_id) || 0)) return;
         if (seq) stateSequences.set(payload.user_id, seq);
+        if (localMicActive && payload.user_id === localMicUserId) return;
         states.set(payload.user_id, payload.state);
         render();
       })
@@ -187,6 +242,9 @@ async function boot() {
       if (debugMode) setStatus(`Connected · ${members.length} participant(s) · Vio Studio v2.0`, false);
       else clearStatus();
     }
+    // Personal Solo overlays capture their own mic. Collaboration overlays keep
+    // using each participant's Creator-side state broadcasts.
+    await startInvisibleSoloMicrophone();
     if (refreshTimer) clearInterval(refreshTimer);
     refreshTimer = setInterval(() => {
       refreshMembers().catch(error => setStatus(`Refresh overlay gagal: ${error.message}`, true));
@@ -212,4 +270,7 @@ boot();
 window.addEventListener("pagehide", () => {
   if (refreshTimer) clearInterval(refreshTimer);
   for (const entry of playerRenderers.values()) entry.renderer.stop();
+  void localMicEngine?.stop().catch(() => {});
+  localMicEngine = null;
+  localMicActive = false;
 });
