@@ -611,13 +611,20 @@ async function uploadCharacterAccessories(files) {
       alert(`Aksesori ${file.name} dilewati. Gunakan PNG/WebP maksimal 8 MB.`);
       continue;
     }
+    let storagePath = "";
+    let metadataRecorded = false;
     try {
       const extension = file.type === "image/webp" ? "webp" : "png";
-      const storagePath = `${currentUser.id}/characters/default/accessories/${crypto.randomUUID()}.${extension}`;
+      storagePath = `${currentUser.id}/characters/default/accessories/${crypto.randomUUID()}.${extension}`;
       const { error } = await supabase.storage.from("vio-studio-assets").upload(storagePath, file, { upsert: false, contentType: file.type, cacheControl: "3600" });
       if (error) throw error;
       await api("record_accessory", { storage_path: storagePath, name: file.name, mime_type: file.type, size_bytes: file.size });
+      metadataRecorded = true;
     } catch (error) {
+      if (storagePath && !metadataRecorded) {
+        const { error: cleanupError } = await supabase.storage.from("vio-studio-assets").remove([storagePath]);
+        if (cleanupError) console.warn("Failed to clean up unrecorded accessory upload:", cleanupError);
+      }
       alert(`Upload aksesori ${file.name} gagal: ${error.message}`);
     }
   }
