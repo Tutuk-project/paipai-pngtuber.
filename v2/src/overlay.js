@@ -55,6 +55,12 @@ function ensurePlayerRenderer(member, slotWidth) {
 async function refreshMembers() {
   const result = await api("overlay_connect", { room_id: roomId, overlay_token: overlayToken });
   members = result.members || [];
+  const hostMember = members.find(member => member.is_host) || members[0];
+  const output = hostMember?.preferences || {};
+  const width = Math.max(320, Math.min(3840, Math.round(Number(output.outputWidth) || 1080)));
+  const height = Math.max(320, Math.min(3840, Math.round(Number(output.outputHeight) || 1920)));
+  if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
+  canvas.style.aspectRatio = `${width} / ${height}`;
   const activeIds = new Set(members.map(member => member.user_id));
   for (const [userId, entry] of playerRenderers) {
     if (!activeIds.has(userId)) { entry.renderer.stop(); playerRenderers.delete(userId); states.delete(userId); }
