@@ -25,6 +25,8 @@ let roomChannel = null;
 let roomMembers = [];
 let currentMicState = "idle";
 let assetUrls = { idle: null, talking: null, blink: null, talking_blink: null };
+let characterAccessories = [];
+let selectedAccessoryId = null;
 let profilePreferences = { scale: 1, sensitivity: 1, boostDb: 6, deviceId: "" };
 let roomOverrides = { scale: 1, x: 0, y: 0, sensitivity: 1, boostDb: 6, deviceId: "" };
 let renderFrame = 0;
@@ -176,7 +178,29 @@ function renderSettings(menuId) {
       field.append(label, input);
       grid.append(field);
     }
-    content.append(note, grid);
+    const accessorySection = document.createElement("section");
+    accessorySection.className = "panel-card";
+    accessorySection.style.cssText = "margin-top:14px;padding:14px";
+    const accessoryTitle = document.createElement("h3");
+    accessoryTitle.textContent = "Accessories";
+    const accessoryHint = document.createElement("p");
+    accessoryHint.className = "muted";
+    accessoryHint.textContent = "Tambahkan PNG/WebP transparan, lalu atur posisi, ukuran, mirror, dan gerakan mengikuti avatar.";
+    const accessoryInput = document.createElement("input");
+    accessoryInput.type = "file";
+    accessoryInput.accept = "image/png,image/webp";
+    accessoryInput.multiple = true;
+    accessoryInput.className = "text-input";
+    accessoryInput.addEventListener("change", async () => {
+      await uploadCharacterAccessories(accessoryInput.files);
+      accessoryInput.value = "";
+    });
+    const accessoryList = document.createElement("div");
+    accessoryList.id = "accessorySettingsList";
+    accessoryList.className = "setting-grid";
+    accessorySection.append(accessoryTitle, accessoryHint, accessoryInput, accessoryList);
+    content.append(note, grid, accessorySection);
+    renderAccessorySettingsList();
     return;
   }
 
@@ -365,6 +389,7 @@ async function login(username, pairingCode) {
   try {
     const assets = await api("my_assets");
     assetUrls = { ...assetUrls, ...(assets.assets || {}) };
+    characterAccessories = assets.accessories || [];
     drawPreview();
   } catch (assetError) { console.info("No saved character assets yet:", assetError.message); }
   $("footerSession").textContent = `Session: ${currentUser.username} · ${currentUser.role}`;
@@ -510,6 +535,107 @@ async function stopMicrophone() {
   if (roomChannel) await broadcastPlayerState("idle");
 }
 
+async function uploadCharacterAccessories(files) {
+  if (!files?.length || !supabase || !currentUser) return;
+  for (const file of [...files]) {
+    if (!/^image\/(png|webp)$/.test(file.type) || file.size < 1 || file.size > 8 * 1024 * 1024) {
+      alert(`Aksesori ${file.name} dilewati. Gunakan PNG/WebP maksimal 8 MB.`);
+      continue;
+    }
+    try {
+      const extension = file.type === "image/webp" ? "webp" : "png";
+      const storagePath = `${currentUser.id}/characters/default/accessories/${crypto.randomUUID()}.${extension}`;
+      const { error } = await supabase.storage.from("vio-studio-assets").upload(storagePath, file, { upsert: false, contentType: file.type, cacheControl: "3600" });
+      if (error) throw error;
+      await api("record_accessory", { storage_path: storagePath, name: file.name, mime_type: file.type, size_bytes: file.size });
+    } catch (error) {
+      alert(`Upload aksesori ${file.name} gagal: ${error.message}`);
+    }
+  }
+  const result = await api("my_assets");
+  characterAccessories = result.accessories || [];
+  drawPreview();
+  renderAccessorySettingsList();
+}
+
+function renderAccessorySettingsList() {
+  const host = $("accessorySettingsList");
+  if (!host) return;
+  host.replaceChildren();
+  if (!characterAccessories.length) {
+    const empty = document.createElement("p");
+    empty.className = "muted";
+    empty.textContent = "Belum ada aksesori.";
+    host.append(empty);
+    return;
+  }
+  for (const item of characterAccessories) {
+    const card = document.createElement("div");
+    card.className = "setting-field";
+    card.style.cssText = "padding:10px;border:1px solid var(--line);border-radius:12px";
+    const heading = document.createElement("strong");
+    heading.textContent = item.name || "Accessory";
+    const preview = document.createElement("img");
+    preview.src = item.src;
+    preview.alt = item.name || "Accessory";
+    preview.style.cssText = "width:100%;height:96px;object-fit:contain;background:rgba(0,0,0,.12);border-radius:8px";
+    card.append(heading, preview);
+    const addRange = (labelText, key, min, max, step) => {
+      const wrap = document.createElement("label");
+      wrap.className = "setting-field";
+      const label = document.createElement("span");
+      label.textContent = labelText;
+      const input = document.createElement("input");
+      input.type = "range"; input.min = String(min); input.max = String(max); input.step = String(step);
+      input.value = String(item[key] ?? (key === "x" || key === "y" ? 0.5 : 0.18));
+      input.addEventListener("input", () => {
+        const value = Number(input.value);
+        if (key === "w") {
+          const ratio = Number(item.h || 0.18) / Math.max(0.01, Number(item.w || 0.18));
+          item.w = value; item.h = Math.min(2, Math.max(0.01, value * ratio));
+        } else item[key] = value;
+        drawPreview();
+      });
+      input.addEventListener("change", () => saveAccessorySettings(item));
+      wrap.append(label, input); card.append(wrap);
+    };
+    addRange("Posisi horizontal", "x", 0, 1, 0.01);
+    addRange("Posisi vertikal", "y", 0, 1, 0.01);
+    addRange("Ukuran", "w", 0.04, 0.8, 0.01);
+    const addCheck = (labelText, key, defaultValue) => {
+      const label = document.createElement("label");
+      label.className = "check-row";
+      const input = document.createElement("input");
+      input.type = "checkbox"; input.checked = item[key] ?? defaultValue;
+      input.addEventListener("change", () => { item[key] = input.checked; drawPreview(); saveAccessorySettings(item); });
+      label.append(input, document.createTextNode(labelText)); card.append(label);
+    };
+    addCheck("Ikuti gerakan avatar", "follow", true);
+    addCheck("Mirror bersama avatar", "mirror", false);
+    addCheck("Aktifkan efek visual", "effectsEnabled", true);
+    const remove = actionButton("Hapus aksesori", async () => {
+      if (!confirm(`Hapus aksesori "${item.name}"?`)) return;
+      try {
+        await api("delete_accessory", { accessory_id: item.id });
+        characterAccessories = characterAccessories.filter(x => x.id !== item.id);
+        drawPreview(); renderAccessorySettingsList();
+      } catch (error) { alert(`Gagal menghapus aksesori: ${error.message}`); }
+    });
+    card.append(remove);
+    host.append(card);
+  }
+}
+
+async function saveAccessorySettings(item) {
+  try {
+    await api("update_accessory", {
+      accessory_id: item.id, x: item.x, y: item.y, w: item.w, h: item.h,
+      mirror: !!item.mirror, follow_avatar: item.follow !== false, effects_enabled: item.effectsEnabled !== false
+    });
+    if (currentRoom) await loadRoomMembers();
+  } catch (error) { alert(`Pengaturan aksesori gagal disimpan: ${error.message}`); }
+}
+
 async function uploadCharacterAsset(state, file) {
   if (!file) return;
   if (!supabase || !currentUser) return alert("Backend belum siap.");
@@ -544,6 +670,7 @@ function drawPreview() {
   avatarRenderer.setAssets(assetUrls);
   avatarRenderer.setState(currentMicState);
   avatarRenderer.setPreferences(profilePreferences);
+  avatarRenderer.setAccessories(characterAccessories);
   const hasAvatar = !!(assetUrls.idle || assetUrls.talking || assetUrls.blink || assetUrls.talking_blink);
   $("emptyAvatar").hidden = hasAvatar;
 }
