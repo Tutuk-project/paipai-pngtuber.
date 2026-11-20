@@ -454,17 +454,17 @@ export class AvatarRenderer {
     return result;
   }
 
-  drawEffectSprite(ctx, sprite, x, y, width, height, ids, now) {
+  drawEffectSprite(ctx, sprite, x, y, width, height, ids, now, target = "avatar") {
     const { canvas, pad } = sprite;
     const sourceWidth = sprite.width + pad * 2;
     const sourceHeight = sprite.height + pad * 2;
-    if (ids.includes("distort")) {
+    if (ids.includes("distort") && target === "avatar") {
       const strength = Math.max(0, Math.min(1, Number(this.preferences.effects.distort.intensity) / 100 || 0.2));
-      const rows = 36;
+      const rows = 48;
       for (let row = 0; row < rows; row++) {
         const sourceY = row * sourceHeight / rows;
         const sliceHeight = sourceHeight / rows + 1;
-        const offset = Math.sin(now / 95 + row * 0.42) * strength * 18 * (width / sourceWidth);
+        const offset = Math.sin(now / 95 + row * 0.42) * strength * 24 * (width / sourceWidth);
         ctx.drawImage(canvas, 0, sourceY, sourceWidth, sliceHeight, x + offset, y + sourceY * (height / sourceHeight), width, sliceHeight * (height / sourceHeight) + 1);
       }
     } else {
@@ -510,6 +510,7 @@ export class AvatarRenderer {
     ctx.translate(centerX, centerY);
     ctx.rotate(rotation);
     ctx.scale((p.mirror === false ? 1 : -1) * squashX, squashY);
+    ctx.filter = this.effectFilter(ids);
     const shadow = ids.includes("shadow") ? effects.shadow : null;
     if (shadow) {
       ctx.shadowColor = shadow.color || "#101010";
@@ -522,7 +523,7 @@ export class AvatarRenderer {
       ctx.shadowBlur = 12 + Math.max(0, Number(bloom.intensity) || 0) * 0.5;
     }
     const px = sprite.pad * scale;
-    this.drawEffectSprite(ctx, sprite, -width / 2 - px, -height / 2 - px, width + px * 2, height + px * 2, ids, now);
+    this.drawEffectSprite(ctx, sprite, -width / 2 - px, -height / 2 - px, width + px * 2, height + px * 2, ids, now, "avatar");
     ctx.restore();
   }
 
@@ -566,7 +567,7 @@ export class AvatarRenderer {
       }
       const px = sprite.pad * (width / Math.max(1, sprite.width));
       const py = sprite.pad * (height / Math.max(1, sprite.height));
-      this.drawEffectSprite(ctx, sprite, -width / 2 - px, -height / 2 - py, width + px * 2, height + py * 2, ids, now);
+      this.drawEffectSprite(ctx, sprite, -width / 2 - px, -height / 2 - py, width + px * 2, height + py * 2, ids, now, "accessories");
       ctx.restore();
     }
   }
