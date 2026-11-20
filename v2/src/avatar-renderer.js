@@ -20,6 +20,7 @@ export class AvatarRenderer {
     this.blinkUntil = 0;
     this.backgroundImage = null;
     this.backgroundVideo = null;
+    this.avatarMotion = { centerX: canvas.width / 2, centerY: canvas.height / 2, rotation: 0, scaleX: 1, scaleY: 1 };
     this.boundFrame = time => this.frame(time);
   }
 
@@ -166,8 +167,11 @@ export class AvatarRenderer {
     const filter = effects.filter?.enabled
       ? `hue-rotate(${Number(effects.filter.hue) || 0}deg) saturate(${Number(effects.filter.saturation) || 100}%) brightness(${Number(effects.filter.brightness) || 100}%) contrast(${Number(effects.filter.contrast) || 100}%) grayscale(${Number(effects.filter.grayscale) || 0}%) sepia(${Number(effects.filter.sepia) || 0}%)`
       : "none";
+    const centerX = W / 2 + (Number(p.offsetX) || 0);
+    const centerY = H / 2 + (Number(p.offsetY) || 0) - bounce;
+    this.avatarMotion = { centerX, centerY, rotation, scaleX: 1, scaleY: 1 };
     ctx.save();
-    ctx.translate(W / 2 + (Number(p.offsetX) || 0), H / 2 + (Number(p.offsetY) || 0) - bounce);
+    ctx.translate(centerX, centerY);
     ctx.rotate(rotation);
     ctx.scale(p.mirror === false ? 1 : -1, 1);
     ctx.filter = filter;
@@ -219,8 +223,29 @@ export class AvatarRenderer {
       const y = (Number(item.y) || 0.5) * H;
       const width = (Number(item.w) || 0.18) * W;
       const height = (Number(item.h) || 0.18) * H;
+      const motion = this.avatarMotion || { centerX: W / 2, centerY: H / 2, rotation: 0, scaleX: 1, scaleY: 1 };
       ctx.save();
-      ctx.translate(x, y);
+      if (item.follow !== false) {
+        x = motion.centerX + (x - W / 2) * motion.scaleX;
+        y = motion.centerY + (y - H / 2) * motion.scaleY;
+        ctx.translate(x, y);
+        ctx.rotate(motion.rotation);
+      } else {
+        ctx.translate(x, y);
+      }
+      const effects = this.preferences.effects || {};
+      if (item.effectsEnabled !== false && effects.filter?.enabled) {
+        ctx.filter = `hue-rotate(${Number(effects.filter.hue) || 0}deg) saturate(${Number(effects.filter.saturation) || 100}%) brightness(${Number(effects.filter.brightness) || 100}%) contrast(${Number(effects.filter.contrast) || 100}%) grayscale(${Number(effects.filter.grayscale) || 0}%) sepia(${Number(effects.filter.sepia) || 0}%)`;
+      }
+      if (item.effectsEnabled !== false && effects.shadow?.enabled) {
+        ctx.shadowColor = effects.shadow.color || "#101010";
+        ctx.shadowBlur = Math.max(0, Number(effects.shadow.intensity) || 0);
+        ctx.shadowOffsetY = Math.max(0, Number(effects.shadow.intensity) || 0) * 0.2;
+      }
+      if (item.effectsEnabled !== false && effects.glow?.enabled) {
+        ctx.shadowColor = effects.glow.color || "#ffd7b8";
+        ctx.shadowBlur = Math.max(0, Number(effects.glow.intensity) || 0) * 0.7;
+      }
       if (item.mirror && this.preferences.mirror !== false) ctx.scale(-1, 1);
       ctx.drawImage(image, -width / 2, -height / 2, width, height);
       ctx.restore();
