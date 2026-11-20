@@ -29,6 +29,39 @@ function makeRenderer(items, effects = {}) {
 
 const image = { complete: true, naturalWidth: 100, width: 100, height: 100 };
 
+test("legacy effects are filtered by state, target and global switches", () => {
+  const renderer = Object.create(AvatarRenderer.prototype);
+  renderer.preferences = {
+    effects: {
+      enabled: true,
+      stickerEffectsEnabled: true,
+      filter: { enabled: true, states: ["idle", "blink"], targets: ["avatar"], filter: { hue: 20 } },
+      stroke: { enabled: true, states: ["talking_blink"], targets: ["accessories"] },
+      shake: { enabled: true, states: ["all"], targets: ["all"] }
+    }
+  };
+  assert.deepEqual(renderer.activeEffects("idle", "avatar"), ["filter", "shake"]);
+  assert.deepEqual(renderer.activeEffects("talking_blink", "avatar"), ["shake"]);
+  assert.deepEqual(renderer.activeEffects("talking_blink", "accessories", { effectsEnabled: true }), ["stroke", "shake"]);
+  renderer.preferences.effects.stickerEffectsEnabled = false;
+  assert.deepEqual(renderer.activeEffects("talking_blink", "accessories", { effectsEnabled: true }), []);
+  renderer.preferences.effects.enabled = false;
+  assert.deepEqual(renderer.activeEffects("idle", "avatar"), []);
+});
+
+test("legacy filter parameters include hue, saturation, brightness, contrast and color channels", () => {
+  const renderer = Object.create(AvatarRenderer.prototype);
+  renderer.preferences = { effects: { filter: { filter: { hue: 20, saturation: 125, brightness: 110, contrast: 90, invert: 15, grayscale: 5, sepia: 8 } } } };
+  const filter = renderer.effectFilter(["filter"]);
+  assert.match(filter, /hue-rotate\(20deg\)/);
+  assert.match(filter, /saturate\(125%\)/);
+  assert.match(filter, /brightness\(110%\)/);
+  assert.match(filter, /contrast\(90%\)/);
+  assert.match(filter, /invert\(15%\)/);
+  assert.match(filter, /grayscale\(5%\)/);
+  assert.match(filter, /sepia\(8%\)/);
+});
+
 test("following accessory inherits avatar position, rotation and scale", () => {
   const ctx = makeContext();
   const renderer = makeRenderer([{ image, x: 0.75, y: 0.25, w: 0.2, h: 0.25, follow: true }]);
