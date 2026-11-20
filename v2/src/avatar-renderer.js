@@ -70,12 +70,16 @@ export function normalizeEffects(input = {}) {
   };
   for (const key of EFFECT_KEYS) {
     const incoming = source[key] && typeof source[key] === "object" ? source[key] : {};
-    const states = Array.isArray(incoming.states)
-      ? incoming.states.map(state => state === "talkingBlink" ? "talking_blink" : state).filter(state => state === "all" || EFFECT_STATES.includes(state))
+    const rawStates = Array.isArray(incoming.states)
+      ? incoming.states.map(state => state === "talkingBlink" ? "talking_blink" : state)
       : [...EFFECT_STATES];
-    const targets = Array.isArray(incoming.targets)
-      ? incoming.targets.filter(target => target === "all" || target === "avatar" || target === "accessories")
-      : ["avatar", "accessories"];
+    const states = rawStates.includes("all")
+      ? [...EFFECT_STATES]
+      : rawStates.filter(state => EFFECT_STATES.includes(state));
+    const rawTargets = Array.isArray(incoming.targets) ? incoming.targets : ["avatar", "accessories"];
+    const targets = rawTargets.includes("all")
+      ? ["avatar", "accessories"]
+      : rawTargets.filter(target => target === "avatar" || target === "accessories");
     const intensity = Number(incoming.intensity);
     const thickness = Number(incoming.thickness);
     effects[key] = {
