@@ -16,7 +16,7 @@ This is the first modular v2.0 foundation for the existing PNGTuber project. It 
 - New microphone engine with platform-friendly media constraints, fallback capture constraints, AGC/noise suppression preferences, adaptive noise floor, calibrated threshold, hysteresis, hangover, gain control and AudioContext resume support.
 - Additive Supabase SQL schema and a single Edge Function API.
 
-## Important state
+## Renderer performance benchmark\n\nThe fast CI smoke test validates pixel output at 360×640. A separate high-resolution benchmark exercises a 1080×1920 canvas, four accessories and all seven effects without a full-frame pixel readback. Run it from `v2/` with `node tests/browser-renderer.performance.mjs` after installing the Playwright dependencies and Chromium used by CI. It reports per-frame and average render time; results from GitHub-hosted Chromium are comparative only and do not establish POCO X7 Pro or iOS performance.\n\n## Important state
 
 This is a **development foundation**, not a production release. The source is stored on GitHub in branch `develop/vio-studio-v2` under `/v2/`. It has not been connected to or deployed on the live Supabase project, and GitHub Pages production settings remain unchanged. The legacy avatar/effects renderer from the 3.6 MB v1.0 `index.html` is only partially ported. Do not replace the currently published site with this package until renderer parity and real integration tests pass.
 
