@@ -11,7 +11,7 @@ const EFFECT_DEFAULTS = {
 };
 const DEFAULTS = {
   scale: 1, mirror: true, bounce: 0.035, squash: 0.07, sway: 0, breathing: 0, blinkRate: 4,
-  fps: 30, outputWidth: 1080, outputHeight: 1920, offsetX: 0, offsetY: 0,
+  fps: 30, bounceMs: 240, idleBob: 0.006, outputWidth: 1080, outputHeight: 1920, offsetX: 0, offsetY: 0,
   background: { mode: "transparent", color: "#11151b", color1: "#254c4a", color2: "#e2b48c", angle: 135 },
   effects: { enabled: false, stickerEffectsEnabled: true, ...structuredClone(EFFECT_DEFAULTS) }
 };
@@ -491,8 +491,9 @@ export class AvatarRenderer {
     const scale = fit * Math.max(0.1, Math.min(4, Number(p.scale) || 1)) * (1 + breath);
     const width = image.width * scale, height = image.height * scale;
     const talking = expression === "talking" || expression === "talking_blink";
-    const phase = (now % 240) / 240;
-    const bounce = talking ? Math.abs(Math.sin(phase * Math.PI)) * (Number(p.bounce) || 0) * height : Math.sin(now / 520) * 0.006 * height;
+    const bounceMs = Math.max(80, Math.min(1000, Number(p.bounceMs) || 240));
+    const phase = (now % bounceMs) / bounceMs;
+    const bounce = talking ? Math.abs(Math.sin(phase * Math.PI)) * (Number(p.bounce) || 0) * height : Math.sin(now / 520) * (Number(p.idleBob ?? 0.006)) * height;
     const sway = Number(p.sway) || 0;
     const rotation = sway ? Math.sin(now / (talking ? 570 : 1400)) * sway * Math.PI / 180 : 0;
     const squashAmount = Math.max(0, Math.min(0.25, Number(p.squash ?? 0.07)));
