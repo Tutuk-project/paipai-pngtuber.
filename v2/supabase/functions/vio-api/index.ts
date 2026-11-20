@@ -481,7 +481,7 @@ Deno.serve(async (req) => {
       const { data: profile, error: profileError } = await db.from("vio_profiles").select("preferences").eq("user_id", user.id).maybeSingle();
       if (profileError) throw profileError;
       const previous = (profile?.preferences as any)?.background;
-      const background = { ...(previous || {}), mode: isVideo ? "video" : "image", bucket_id: "vio-backgrounds", storage_path: storagePath, mime_type: mime };
+      const background = { ...(previous || {}), mode: isVideo ? "video" : "image", bucket_id: "vio-backgrounds", storage_path: storagePath, mime_type: mime, size_bytes: size };
       const preferences = { ...(profile?.preferences || {}), background };
       const oldJob = previous?.storage_path && previous.storage_path !== storagePath
         ? await enqueueStorageCleanup(db, previous.bucket_id || "vio-backgrounds", previous.storage_path, user.id, user.id, "background_replaced")
