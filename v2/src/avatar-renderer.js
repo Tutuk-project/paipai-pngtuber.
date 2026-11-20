@@ -60,22 +60,41 @@ export function fisheyeWarpPixels(source, width, height, intensity) {
   return output;
 }
 
-function normalizeEffects(input = {}) {
+export function normalizeEffects(input = {}) {
   const source = { ...(input || {}) };
   if (source.glow && !source.bloom) source.bloom = source.glow;
   const hasLegacyEffect = EFFECT_KEYS.some(key => source[key] && typeof source[key] === "object");
   const effects = {
-    enabled: source.enabled ?? hasLegacyEffect,
-    stickerEffectsEnabled: source.stickerEffectsEnabled ?? true
+    enabled: typeof source.enabled === "boolean" ? source.enabled : hasLegacyEffect,
+    stickerEffectsEnabled: source.stickerEffectsEnabled !== false
   };
   for (const key of EFFECT_KEYS) {
-    const incoming = source[key] || {};
+    const incoming = source[key] && typeof source[key] === "object" ? source[key] : {};
+    const states = Array.isArray(incoming.states)
+      ? incoming.states.map(state => state === "talkingBlink" ? "talking_blink" : state).filter(state => state === "all" || EFFECT_STATES.includes(state))
+      : [...EFFECT_STATES];
+    const targets = Array.isArray(incoming.targets)
+      ? incoming.targets.filter(target => target === "all" || target === "avatar" || target === "accessories")
+      : ["avatar", "accessories"];
+    const intensity = Number(incoming.intensity);
+    const thickness = Number(incoming.thickness);
     effects[key] = {
       ...structuredClone(EFFECT_DEFAULTS[key]),
-      ...incoming,
-      filter: key === "filter" ? { ...EFFECT_DEFAULTS.filter.filter, ...(incoming.filter || {}) } : incoming.filter,
-      states: Array.isArray(incoming.states) ? incoming.states.map(state => state === "talkingBlink" ? "talking_blink" : state) : [...EFFECT_STATES],
-      targets: Array.isArray(incoming.targets) ? [...incoming.targets] : ["avatar", "accessories"]
+      enabled: incoming.enabled === true,
+      intensity: Number.isFinite(intensity) ? Math.max(0, Math.min(100, intensity)) : EFFECT_DEFAULTS[key].intensity,
+      color: typeof incoming.color === "string" && incoming.color.length <= 32 ? incoming.color : EFFECT_DEFAULTS[key].color,
+      thickness: Number.isFinite(thickness) ? Math.max(1, Math.min(32, thickness)) : EFFECT_DEFAULTS[key].thickness,
+      invert: incoming.invert === true,
+      states,
+      targets,
+      filter: key === "filter"
+        ? Object.fromEntries(Object.entries({ ...EFFECT_DEFAULTS.filter.filter, ...(incoming.filter && typeof incoming.filter === "object" ? incoming.filter : {}) }).map(([name, value]) => {
+            const numeric = Number(value);
+            const limits = { hue: [-180, 180], saturation: [0, 200], brightness: [0, 200], contrast: [0, 200], invert: [0, 100], grayscale: [0, 100], sepia: [0, 100] };
+            const range = limits[name];
+            return [name, range && Number.isFinite(numeric) ? Math.max(range[0], Math.min(range[1], numeric)) : EFFECT_DEFAULTS.filter.filter[name]];
+          }))
+        : undefined
     };
   }
   return effects;
