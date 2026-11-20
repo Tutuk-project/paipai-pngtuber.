@@ -6,18 +6,33 @@ let channel;
 let roomId;
 let overlayToken;
 let members = [];
+let refreshTimer = 0;
 const states = new Map();
 const stateSequences = new Map();
 const layoutSequences = new Map();
 const playerRenderers = new Map();
 const canvas = document.getElementById("stage");
-const ctx = canvas.getContext("2d");
+const ctx = canvas?.getContext("2d");
 const statusEl = document.getElementById("status");
+const debugMode = new URLSearchParams(location.search).get("debug") === "1";
+
+function setStatus(message, error = false, forceVisible = true) {
+  if (!statusEl) return;
+  statusEl.textContent = message;
+  statusEl.classList.toggle("is-error", error);
+  statusEl.classList.toggle("is-visible", forceVisible || debugMode);
+}
+
+function clearStatus() {
+  if (!statusEl) return;
+  statusEl.classList.remove("is-error", "is-visible");
+  statusEl.textContent = "";
+}
 
 async function api(action, payload = {}) {
   const { data, error } = await supabase.functions.invoke(config.edgeFunctionName || "vio-api", { body: { action, ...payload } });
-  if (error) throw error;
-  if (!data?.ok) throw new Error(data?.error || "Overlay API failed");
+  if (error) throw new Error(error.message || `Supabase request failed: ${action}`);
+  if (!data?.ok) throw new Error(data?.error || `Overlay API failed: ${action}`);
   return data;
 }
 
@@ -56,6 +71,19 @@ function ensurePlayerRenderer(member, slotWidth) {
   return entry;
 }
 
+function render() {
+  if (!canvas || !ctx) return;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  const visible = members.slice(0, 4);
+  if (!visible.length) return;
+  const slotWidth = canvas.width / visible.length;
+  visible.forEach((member, index) => {
+    const entry = playerRenderers.get(member.user_id) || ensurePlayerRenderer(member, slotWidth);
+    entry.renderer.setState(states.get(member.user_id) || member.state || "idle");
+    ctx.drawImage(entry.canvas, slotWidth * index, 0, slotWidth, canvas.height);
+  });
+}
+
 async function refreshMembers() {
   const result = await api("overlay_connect", { room_id: roomId, overlay_token: overlayToken });
   members = result.members || [];
@@ -65,48 +93,63 @@ async function refreshMembers() {
   const height = Math.max(320, Math.min(3840, Math.round(Number(output.outputHeight) || 1920)));
   if (canvas.width !== width || canvas.height !== height) { canvas.width = width; canvas.height = height; }
   canvas.style.aspectRatio = `${width} / ${height}`;
+
   const activeIds = new Set(members.map(member => member.user_id));
   for (const [userId, entry] of playerRenderers) {
-    if (!activeIds.has(userId)) { entry.renderer.stop(); playerRenderers.delete(userId); states.delete(userId); }
+    if (!activeIds.has(userId)) {
+      entry.renderer.stop();
+      playerRenderers.delete(userId);
+      states.delete(userId);
+    }
   }
   members.forEach(member => {
     states.set(member.user_id, member.state || "idle");
     ensurePlayerRenderer(member, canvas.width / Math.max(1, Math.min(4, members.length)));
   });
   render();
-}
 
-function render() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-  const visible = members.slice(0, 4);
-  const slotWidth = canvas.width / Math.max(1, visible.length);
-  visible.forEach((member, index) => {
-    const entry = playerRenderers.get(member.user_id) || ensurePlayerRenderer(member, slotWidth);
-    entry.renderer.setState(states.get(member.user_id) || member.state || "idle");
-    ctx.drawImage(entry.canvas, slotWidth * index, 0, slotWidth, canvas.height);
-  });
-  statusEl.textContent = `${visible.length} player slot(s) · Vio Studio v2.0`;
+  if (!members.length) {
+    setStatus("Overlay terhubung ke server, tetapi daftar peserta room kosong. Pastikan room masih aktif dan akun pembuat link masih menjadi anggota.", true);
+    return;
+  }
+  const hasAvatarAssets = members.some(member => Object.values(member.assets || {}).some(Boolean));
+  if (!hasAvatarAssets) {
+    setStatus("Overlay terhubung, tetapi PNG avatar belum ditemukan. Unggah setidaknya ekspresi Idle di Vio Studio > Character.", true);
+    return;
+  }
+  clearStatus();
+  if (debugMode) setStatus(`Connected · ${members.length} participant(s) · Vio Studio v2.0`, false);
 }
 
 async function boot() {
   try {
+    if (!canvas || !ctx) throw new Error("Canvas OBS tidak ditemukan di halaman overlay.");
+    setStatus("Membaca kredensial overlay…");
     const configModule = await import("./config.js");
     config = configModule.VIO_CONFIG;
-    if (!config?.supabaseUrl || !config?.supabasePublishableKey || config.supabasePublishableKey.includes("REPLACE_ME")) throw new Error("Supabase config missing");
-    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
-    supabase = createClient(config.supabaseUrl, config.supabasePublishableKey, { auth: { persistSession: true, autoRefreshToken: true } });
+    if (!config?.supabaseUrl || !config?.supabasePublishableKey || config.supabasePublishableKey.includes("REPLACE_ME")) {
+      throw new Error("Konfigurasi Supabase belum tersedia di build ini.");
+    }
     const pageUrl = new URL(location.href);
-    const linkParams = new URLSearchParams(pageUrl.hash.slice(1));
-    // Query parameters remain supported for already-generated v2 test links.
+    const linkParams = new URLSearchParams(pageUrl.hash.replace(/^#/, ""));
     roomId = linkParams.get("room") || pageUrl.searchParams.get("room");
     overlayToken = linkParams.get("token") || pageUrl.searchParams.get("token");
-    if (!roomId || !overlayToken) throw new Error("Overlay URL is incomplete");
+    if (!roomId || !overlayToken) throw new Error("URL overlay tidak lengkap. Buat ulang link dari tombol Generate OBS Link.");
+
+    setStatus("Menghubungkan ke layanan overlay…");
+    const { createClient } = await import("https://esm.sh/@supabase/supabase-js@2");
+    supabase = createClient(config.supabaseUrl, config.supabasePublishableKey, {
+      auth: { persistSession: true, autoRefreshToken: true }
+    });
     let { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       const { data, error } = await supabase.auth.signInAnonymously();
-      if (error) throw error;
+      if (error) throw new Error(`Login perangkat overlay gagal: ${error.message}`);
       session = data.session;
     }
+    if (!session) throw new Error("Sesi perangkat overlay tidak berhasil dibuat.");
+
+    setStatus("Memuat peserta dan aset avatar…");
     await refreshMembers();
     channel = supabase.channel(`room:${roomId}`, { config: { private: true } })
       .on("broadcast", { event: "player-state" }, ({ payload }) => {
@@ -114,8 +157,6 @@ async function boot() {
         const seq = Number(payload.seq) || 0;
         if (seq && seq <= (stateSequences.get(payload.user_id) || 0)) return;
         if (seq) stateSequences.set(payload.user_id, seq);
-        const old = states.get(payload.user_id);
-        if (old === payload.state) return;
         states.set(payload.user_id, payload.state);
         render();
       })
@@ -127,32 +168,38 @@ async function boot() {
         const member = members.find(item => item.user_id === payload.user_id);
         if (member) {
           member.overrides = { ...(member.overrides || {}), ...payload.overrides };
-          const slotWidth = canvas.width / Math.max(1, Math.min(4, members.length));
-          ensurePlayerRenderer(member, slotWidth);
+          ensurePlayerRenderer(member, canvas.width / Math.max(1, Math.min(4, members.length)));
         }
         render();
       })
       .on("broadcast", { event: "member-assets-updated" }, () => {
-        refreshMembers().catch(error => { statusEl.textContent = error.message; });
+        refreshMembers().catch(error => setStatus(`Gagal memperbarui aset: ${error.message}`, true));
       })
       .on("presence", { event: "sync" }, () => {
-        statusEl.textContent = `${Object.keys(channel.presenceState()).length} connected · Vio Studio v2.0`;
-        refreshMembers().catch(error => { statusEl.textContent = error.message; });
+        refreshMembers().catch(error => setStatus(`Sinkronisasi peserta gagal: ${error.message}`, true));
       });
     await supabase.realtime.setAuth();
     await new Promise((resolve, reject) => channel.subscribe(status => {
       if (status === "SUBSCRIBED") resolve();
-      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") reject(new Error(`Realtime: ${status}`));
+      else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") reject(new Error(`Realtime channel error: ${status}`));
     }));
-    statusEl.textContent = `${members.length} participant(s) connected`;
-    // Refresh membership/assets occasionally; animation states remain event-driven.
-    setInterval(() => refreshMembers().catch(error => { statusEl.textContent = error.message; }), 15000);
+    if (members.length && members.some(member => Object.values(member.assets || {}).some(Boolean))) {
+      if (debugMode) setStatus(`Connected · ${members.length} participant(s) · Vio Studio v2.0`, false);
+      else clearStatus();
+    }
+    if (refreshTimer) clearInterval(refreshTimer);
+    refreshTimer = setInterval(() => {
+      refreshMembers().catch(error => setStatus(`Refresh overlay gagal: ${error.message}`, true));
+    }, 15000);
   } catch (error) {
-    statusEl.textContent = `Overlay error: ${error.message}`;
-    console.error(error);
+    console.error("Vio Studio OBS overlay error:", error);
+    setStatus(`OBS OVERLAY ERROR: ${error.message}`, true);
   }
 }
 
 boot();
 
-window.addEventListener("pagehide", () => { for (const entry of playerRenderers.values()) entry.renderer.stop(); });
+window.addEventListener("pagehide", () => {
+  if (refreshTimer) clearInterval(refreshTimer);
+  for (const entry of playerRenderers.values()) entry.renderer.stop();
+});
