@@ -111,7 +111,77 @@ test("modular avatar renderer is wired into editor and OBS overlay", () => {
   for (const feature of ["glow", "shadow", "stroke", "filter", "distort"]) assert.ok(renderer.includes(feature));
 });
 
+test("live profile and asset updates refresh collaboration members and OBS snapshots", () => {
+  const app = read("src/app.js");
+  const overlay = read("src/overlay.js");
+  assert.ok(app.includes('event: "member-assets-updated"'));
+  assert.ok(app.includes("async function broadcastMemberAssetsUpdated()"));
+  assert.ok(app.includes("await broadcastMemberAssetsUpdated()"));
+  assert.ok(overlay.includes('event: "member-assets-updated"'));
+  assert.ok(overlay.includes("refreshMembers().catch"));
+  assert.ok(overlay.includes("setInterval(() => refreshMembers()"));
+});
+
 test("accessories can be selected and dragged directly on the avatar canvas", () => {
+  const app = read("src/app.js");
+  assert.ok(app.includes("function bindAccessoryCanvasDrag(canvas)"));
+  assert.ok(app.includes('canvas.addEventListener("pointerdown"'));
+  assert.ok(app.includes('canvas.addEventListener("pointermove"'));
+  assert.ok(app.includes('canvas.addEventListener("pointerup"'));
+  assert.ok(app.includes("accessoryScreenBounds(item, canvas)"));
+  assert.ok(app.includes("accessoryDragState.item.x"));
+  assert.ok(app.includes("accessoryDragState.item.y"));
+  assert.ok(app.includes("await saveAccessorySettings(item)"));
+  assert.ok(app.includes("selectedAccessoryId = item.id"));
+});
+
+test("portrait and custom output resolutions are shared by editor, room and OBS", () => {
+  const app = read("src/app.js");
+  const overlay = read("src/overlay.js");
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const renderer = read("src/avatar-renderer.js");
+  const index = read("index.html");
+  const obs = read("overlay.html");
+  assert.ok(app.includes("TikTok Portrait"));
+  assert.ok(app.includes("Custom dimensions"));
+  assert.ok(app.includes("profilePreferences.outputWidth"));
+  assert.ok(app.includes("member.is_host"));
+  assert.ok(overlay.includes("member.is_host"));
+  assert.ok(overlay.includes("canvas.style.aspectRatio"));
+  assert.ok(edge.includes('"outputWidth", "outputHeight"'));
+  assert.ok(app.includes("width * height > 8294400"));
+  assert.ok(edge.includes("outputWidth * outputHeight > 8294400"));
+  assert.ok(edge.includes("member.is_host"));
+  assert.ok(renderer.includes("outputWidth: 1080, outputHeight: 1920"));
+  assert.ok(index.includes('id="avatarCanvas" width="1080" height="1920"'));
+  assert.ok(obs.includes('id="stage" width="1080" height="1920"'));
+});
+
+test("private background media upload is owner-scoped and signed for editor, collaboration and OBS", () => {
+  const app = read("src/app.js");
+  const overlay = read("src/overlay.js");
+  const renderer = read("src/avatar-renderer.js");
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const migration = read("supabase/migrations/004_vio_background_media.sql");
+  assert.ok(app.includes('option value="image">Image / GIF'));
+  assert.ok(app.includes('option value="video">Video'));
+  assert.ok(app.includes('from("vio-backgrounds").upload'));
+  assert.ok(app.includes('api("record_background_asset"'));
+  assert.ok(edge.includes('action === "record_background_asset"'));
+  assert.ok(edge.includes('storage.from("vio-backgrounds").list'));
+  assert.ok(edge.includes("signBackground(db"));
+  assert.ok(edge.includes("profile: profile ? { ...profile, preferences: await signBackground(db, profile.preferences || {}) }"));
+  assert.ok(edge.includes("preferences: await signBackground(db, member.vio_profiles?.preferences || {})"));
+  assert.ok(edge.includes('storage.from("vio-backgrounds").list'));
+  assert.ok(migration.includes("'image/jpeg'"));
+  assert.ok(migration.includes("52428800"));
+  assert.ok(migration.includes("'vio-backgrounds'"));
+  assert.ok(migration.includes("public = false"));
+  assert.ok(renderer.includes("setBackgroundVideo(src)"));
+  assert.ok(overlay.includes("renderer.setBackgroundVideo(background.mode === \"video\" ? background.src : null)"));
+  assert.ok(app.includes("entry.renderer.setBackgroundImage(background.mode === \"image\" ? background.src : null)"));
+});
+
   const app = read("src/app.js");
   assert.ok(app.includes("function bindAccessoryCanvasDrag(canvas)"));
   assert.ok(app.includes('canvas.addEventListener("pointerdown"'));
