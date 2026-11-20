@@ -55,7 +55,7 @@ The migration adds private-topic authorization policies for room members and OBS
 
 - Connect GitHub and add the package under `/v2/` without replacing root files.
 - Confirm repository rename and GitHub Pages source settings.
-- Configure the separate Supabase Development project, apply migrations 001–006 there, and deploy `vio-api` there only.
+- Configure the separate Supabase Development project, apply migrations 001–008 there, and deploy `vio-api` there only.
 - Complete runtime integration checks for Auth, Storage upload/signing/deletion/retry, account lifecycle, Realtime, and room membership before any production planning.
 - Complete renderer parity: background image/video import, custom resolution controls, direct accessory drag positioning, legacy per-state/per-target effect controls, and remaining v1.0 motion/effect behavior.
 - Load saved profile preferences and selected character from cloud on sign-in.
@@ -88,7 +88,7 @@ The development copy now includes additional safeguards:
 - Asset metadata validates path segments, size and allowed expressions.
 - Account deletion halts when Storage/Auth cleanup fails.
 
-These are local source changes only. The migration and Edge Function have **not** been deployed to Supabase. Re-run `./tests/check-syntax.sh` after future edits. Runtime integration and live RLS/Realtime tests remain required.
+The migrations 001–008 and Edge Function `vio-api` have been deployed to the isolated Supabase Development project only. Runtime integration and live RLS/Realtime tests remain required. Supabase Live is untouched.
 
 - Admin account creation now runs through a single database RPC transaction so the account, profile, pairing code and creation audit cannot be partially committed.
 
@@ -98,11 +98,11 @@ A modular `src/avatar-renderer.js` is wired into the v2 editor and OBS overlay. 
 
 ## 2026-11-20 Vio-Studio v2.0 checkpoints and CI
 
-- Latest checkpoint: `docs/CHECKPOINT-35-2026-11-20.md`.
+- Latest checkpoint: `docs/CHECKPOINT-38-2026-11-20.md`.
 - Previous checkpoints: `docs/CHECKPOINT-17-2026-11-20.md`, `docs/CHECKPOINT-16-2026-11-20.md`, and `docs/CHECKPOINT-15-2026-11-20.md`.
 - Previous checkpoints: `docs/CHECKPOINT-10-2026-11-20.md`, `docs/CHECKPOINT-09-2026-11-20.md`, and `docs/CHECKPOINT-08-2026-11-20.md`.
 - GitHub Actions workflow: `.github/workflows/vio-v2-ci.yml`.
 - Checkpoint 34 verified run: `44747638566`, 57 tests passed, 0 failed, 0 skipped.
 - Checkpoint 35 verified run: `44748939403`, 58 tests passed, 0 failed, 0 skipped; PostgreSQL 16 concurrency suite passed 4/4 scenarios.
 - Coverage includes security policy checks, expired-room Realtime checks, Admin bootstrap, accessory lifecycle/transforms/direct drag, collaboration animation, private background media validation/signed delivery, portrait/custom output dimensions, host-selected room resolution, mobile pixel-budget validation, and live asset-update broadcast wiring.
-- Migrations 001–008 have been applied to the isolated Supabase Development project `vio-studio-v2-dev` (`nbpqnwjxavuhpiuntcep`). The Edge Function has not yet been deployed. Supabase Live remains untouched.
+- Migrations 001–008 and Edge Function `vio-api` v1 are deployed to the isolated Supabase Development project `vio-studio-v2-dev` (`nbpqnwjxavuhpiuntcep`). JWT verification is enabled. Supabase Live remains untouched.
