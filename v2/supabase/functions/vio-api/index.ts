@@ -177,22 +177,44 @@ Deno.serve(async (req) => {
       // Expire stale active rooms before reporting live/inactive status to Admin.
       const { error: expiryError } = await db.from("vio_rooms").update({ status: "expired", closed_at: new Date().toISOString() }).eq("status", "active").lte("expires_at", new Date().toISOString());
       if (expiryError) throw expiryError;
-      const [usersQ, roomsQ, assetsQ, auditQ, recentAuditQ] = await Promise.all([
+      const [usersQ, roomsQ, assetsQ, auditQ, recentAuditQ, cleanupQ] = await Promise.all([
         db.from("vio_app_users").select("id,username,role,is_active,created_at,last_seen_at").order("created_at", { ascending: false }),
         db.from("vio_rooms").select("id,room_code,capacity,status,host_user_id,expires_at, vio_app_users!vio_rooms_host_user_id_fkey(username), vio_room_members(count)").order("created_at", { ascending: false }).limit(100),
         db.from("vio_character_assets").select("id", { count: "exact", head: true }),
         db.from("vio_audit_logs").select("id", { count: "exact", head: true }),
         db.from("vio_audit_logs").select("id,actor_user_id,target_user_id,action,details,created_at").order("created_at", { ascending: false }).limit(40),
+        db.from("vio_storage_cleanup_queue").select("id", { count: "exact", head: true }).is("processed_at", null),
       ]);
       if (usersQ.error) throw usersQ.error;
       if (roomsQ.error) throw roomsQ.error;
       if (recentAuditQ.error) throw recentAuditQ.error;
+      if (cleanupQ.error) throw cleanupQ.error;
       const rooms = (roomsQ.data || []).map((room: any) => ({
         id: room.id, room_code: room.room_code, capacity: room.capacity, status: room.status,
         host_username: room.vio_app_users?.username || "Unknown", member_count: room.vio_room_members?.[0]?.count || 0,
       }));
       await audit(db, admin.id, null, "admin_overview_viewed", {});
-      return json({ ok: true, users: usersQ.data || [], rooms, active_rooms: rooms.filter((room: any) => room.status === "active").length, asset_count: assetsQ.count || 0, audit_count: auditQ.count || 0, recent_audit: recentAuditQ.data || [] });
+      return json({ ok: true, users: usersQ.data || [], rooms, active_rooms: rooms.filter((room: any) => room.status === "active").length, asset_count: assetsQ.count || 0, audit_count: auditQ.count || 0, cleanup_pending_count: cleanupQ.count || 0, recent_audit: recentAuditQ.data || [] });
+    }
+
+    if (action === "admin_retry_storage_cleanup") {
+      const admin = requireAdmin();
+      const { data: jobs, error } = await db.from("vio_storage_cleanup_queue").select("id,bucket_id,storage_path,attempts").is("processed_at", null).order("created_at").limit(25);
+      if (error) throw error;
+      let processed = 0;
+      let pending = 0;
+      for (const job of jobs || []) {
+        try {
+          const result = await processStorageCleanup(db, job);
+          if (result.ok) processed++;
+          else pending++;
+        } catch (cleanupError) {
+          pending++;
+          console.error("Storage cleanup retry failed", job.id, cleanupError);
+        }
+      }
+      await audit(db, admin.id, null, "admin_storage_cleanup_retried", { processed, pending, scanned: (jobs || []).length });
+      return json({ ok: true, processed, pending, scanned: (jobs || []).length });
     }
 
     if (action === "admin_reset_devices") {
