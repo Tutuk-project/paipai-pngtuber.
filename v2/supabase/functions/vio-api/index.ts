@@ -214,6 +214,9 @@ Deno.serve(async (req) => {
       const { error: updateError } = await db.from("vio_app_users").update({ is_active: isActive }).eq("id", targetId);
       if (updateError) throw updateError;
       if (!isActive) {
+        // Revoke any outstanding support-view token immediately when its target is disabled.
+        const { error: supportRevokeError } = await db.from("vio_support_sessions").update({ ended_at: new Date().toISOString() }).eq("target_user_id", targetId).is("ended_at", null);
+        if (supportRevokeError) throw supportRevokeError;
         // Remove disabled accounts from active rooms immediately. If the disabled
         // account is host, close the room rather than leaving an orphaned session.
         const { data: memberships, error: memberError } = await db.from("vio_room_members").select("room_id,is_host").eq("user_id", targetId);
@@ -261,6 +264,7 @@ Deno.serve(async (req) => {
       if (sessionError || !session) return json({ ok: false, error: "Support session is invalid or expired." }, 403);
       const { data: target, error } = await db.from("vio_app_users").select("id,username,role,is_active,created_at,last_seen_at,vio_profiles(*),vio_characters(*,vio_character_assets(*))").eq("id", targetId).single();
       if (error) throw error;
+      if (!target.is_active || target.role === "admin") return json({ ok: false, error: "Support View target is no longer eligible." }, 403);
       const { data: assetRows, error: assetError } = await db.from("vio_character_assets").select("id,character_id,expression,bucket_id,storage_path,mime_type,size_bytes,updated_at").eq("user_id", targetId);
       if (assetError) throw assetError;
       const assets = await Promise.all((assetRows || []).map(async (asset: any) => {
@@ -495,7 +499,8 @@ Deno.serve(async (req) => {
         if (memberError) throw memberError;
         await audit(db, user.id, null, "room_closed_by_host_exit", { room_id: roomId });
       } else {
-        await db.from("vio_room_members").delete().eq("room_id", roomId).eq("user_id", user.id);
+        const { error: leaveError } = await db.from("vio_room_members").delete().eq("room_id", roomId).eq("user_id", user.id);
+        if (leaveError) throw leaveError;
         await audit(db, user.id, null, "room_left", { room_id: roomId });
       }
       return json({ ok: true });
