@@ -36,6 +36,15 @@ jobs:
       - name: Type-check Supabase Edge Function
         working-directory: v2
         run: deno check --no-lock supabase/functions/vio-api/index.ts
+      - name: Set up Python for PostgreSQL migration validation
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Validate PostgreSQL migration syntax
+        working-directory: v2
+        run: |
+          python -m pip install --disable-pip-version-check pglast
+          python tests/check_migrations.py
       - name: Check JavaScript syntax and run regression tests
         working-directory: v2
         run: |
