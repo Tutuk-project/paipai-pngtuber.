@@ -343,10 +343,10 @@ test("all v2 accessory, background and cleanup dependencies have ordered migrati
   const accessories = read("supabase/migrations/003_vio_character_accessories.sql");
   const backgrounds = read("supabase/migrations/004_vio_background_media.sql");
   const cleanup = read("supabase/migrations/005_vio_storage_cleanup_queue.sql");
-  assert.match(accessories, /create table if not exists public\\.vio_character_accessories/i);
+  assert.match(accessories, /create table if not exists public\.vio_character_accessories/i);
   assert.match(backgrounds, /vio-backgrounds/);
   assert.match(backgrounds, /public = false/);
-  assert.match(cleanup, /create table if not exists public\\.vio_storage_cleanup_queue/i);
+  assert.match(cleanup, /create table if not exists public\.vio_storage_cleanup_queue/i);
   assert.match(cleanup, /enable row level security/i);
 });
 
