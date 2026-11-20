@@ -814,6 +814,141 @@ Deno.serve(async (req) => {
       return json({ ok: true, cleanup_pending: cleanupPending });
     }
 
+    if (action === "character_library") {
+      const user = requireUser();
+      const { data: profile, error: profileError } = await db.from("vio_profiles")
+        .select("active_character_id").eq("user_id", user.id).maybeSingle();
+      if (profileError) throw profileError;
+      const { data: characters, error: charactersError } = await db.from("vio_characters")
+        .select("id,name,is_saved,created_at,updated_at")
+        .eq("user_id", user.id).order("created_at", { ascending: true });
+      if (charactersError) throw charactersError;
+      const mapped = await Promise.all((characters || []).map(async (character: any) => {
+        const { data: previewAsset, error: previewError } = await db.from("vio_character_assets")
+          .select("bucket_id,storage_path").eq("user_id", user.id)
+          .eq("character_id", character.id).eq("expression", "idle").maybeSingle();
+        if (previewError) throw previewError;
+        let preview: string | null = null;
+        if (previewAsset) {
+          const { data: signed, error: signError } = await db.storage.from(previewAsset.bucket_id)
+            .createSignedUrl(previewAsset.storage_path, 3600);
+          if (!signError) preview = signed?.signedUrl || null;
+        }
+        return {
+          id: character.id, name: character.name,
+          is_saved: character.is_saved === true,
+          is_active: character.id === profile?.active_character_id,
+          preview, created_at: character.created_at, updated_at: character.updated_at
+        };
+      }));
+      return json({ ok: true, characters: mapped, active_character_id: profile?.active_character_id || null });
+    }
+
+    if (action === "create_character_draft") {
+      const user = requireUser();
+      const { count, error: countError } = await db.from("vio_characters")
+        .select("id", { count: "exact", head: true }).eq("user_id", user.id);
+      if (countError) throw countError;
+      if ((count || 0) >= 50) return json({ ok: false, error: "Character limit reached (50)." }, 409);
+      const { data: character, error } = await db.from("vio_characters")
+        .insert({ user_id: user.id, name: "Draft avatar", is_saved: false })
+        .select("id,name,is_saved,created_at").single();
+      if (error) throw error;
+      const { error: profileError } = await db.from("vio_profiles").upsert({
+        user_id: user.id, active_character_id: character.id
+      }, { onConflict: "user_id" });
+      if (profileError) {
+        await db.from("vio_characters").delete().eq("id", character.id).eq("user_id", user.id);
+        throw profileError;
+      }
+      await audit(db, user.id, user.id, "character_draft_created", { character_id: character.id });
+      return json({ ok: true, character });
+    }
+
+    if (action === "save_character") {
+      const user = requireUser();
+      const characterId = String(body.character_id || "");
+      const { data: character, error: lookupError } = await db.from("vio_characters")
+        .select("id,name,is_saved").eq("id", characterId).eq("user_id", user.id).maybeSingle();
+      if (lookupError) throw lookupError;
+      if (!character) return json({ ok: false, error: "CHARACTER_NOT_FOUND" }, 404);
+      if (character.is_saved) return json({ ok: true, already_saved: true, character });
+      const { data: updated, error } = await db.from("vio_characters").update({
+        is_saved: true, name: character.name === "Draft avatar" ? "Avatar baru" : character.name,
+        updated_at: new Date().toISOString()
+      }).eq("id", characterId).eq("user_id", user.id)
+        .select("id,name,is_saved").single();
+      if (error) throw error;
+      await audit(db, user.id, user.id, "character_saved", { character_id: characterId });
+      return json({ ok: true, already_saved: false, character: updated });
+    }
+
+    if (action === "set_active_character") {
+      const user = requireUser();
+      const characterId = String(body.character_id || "");
+      const { data: character, error: lookupError } = await db.from("vio_characters")
+        .select("id").eq("id", characterId).eq("user_id", user.id).eq("is_saved", true).maybeSingle();
+      if (lookupError) throw lookupError;
+      if (!character) return json({ ok: false, error: "Saved character not found." }, 404);
+      const { error } = await db.from("vio_profiles").upsert({
+        user_id: user.id, active_character_id: characterId
+      }, { onConflict: "user_id" });
+      if (error) throw error;
+      await audit(db, user.id, user.id, "character_activated", { character_id: characterId });
+      return json({ ok: true, active_character_id: characterId });
+    }
+
+    if (action === "delete_character") {
+      const user = requireUser();
+      const characterId = String(body.character_id || "");
+      const { data: character, error: characterError } = await db.from("vio_characters")
+        .select("id,name,is_saved").eq("id", characterId).eq("user_id", user.id).maybeSingle();
+      if (characterError) throw characterError;
+      if (!character) return json({ ok: false, error: "CHARACTER_NOT_FOUND" }, 404);
+      if (!character.is_saved) return json({ ok: false, error: "Save the draft before deleting it." }, 409);
+      const [assetsQ, accessoriesQ] = await Promise.all([
+        db.from("vio_character_assets").select("bucket_id,storage_path").eq("character_id", characterId).eq("user_id", user.id),
+        db.from("vio_character_accessories").select("bucket_id,storage_path").eq("character_id", characterId).eq("user_id", user.id)
+      ]);
+      if (assetsQ.error) throw assetsQ.error;
+      if (accessoriesQ.error) throw accessoriesQ.error;
+      const jobs: any[] = [];
+      for (const item of [...(assetsQ.data || []), ...(accessoriesQ.data || [])]) {
+        jobs.push(await enqueueStorageCleanup(db, item.bucket_id, item.storage_path, user.id, user.id, "character_delete"));
+      }
+      const { data: profile, error: profileError } = await db.from("vio_profiles")
+        .select("active_character_id").eq("user_id", user.id).maybeSingle();
+      if (profileError) throw profileError;
+      let nextActiveId = profile?.active_character_id || null;
+      if (nextActiveId === characterId) {
+        const { data: nextCharacter, error: nextError } = await db.from("vio_characters")
+          .select("id").eq("user_id", user.id).eq("is_saved", true).neq("id", characterId)
+          .order("created_at", { ascending: true }).limit(1).maybeSingle();
+        if (nextError) throw nextError;
+        nextActiveId = nextCharacter?.id || null;
+        const { error: updateProfileError } = await db.from("vio_profiles")
+          .update({ active_character_id: nextActiveId, updated_at: new Date().toISOString() }).eq("user_id", user.id);
+        if (updateProfileError) throw updateProfileError;
+      }
+      const { error: deleteError } = await db.from("vio_characters")
+        .delete().eq("id", characterId).eq("user_id", user.id);
+      if (deleteError) throw deleteError;
+      let cleanupPending = false;
+      for (const job of jobs) {
+        try {
+          const result = await processStorageCleanup(db, job);
+          if (!result.ok) cleanupPending = true;
+        } catch (cleanupError) {
+          cleanupPending = true;
+          console.error("Character asset cleanup deferred", job.id, cleanupError);
+        }
+      }
+      await audit(db, user.id, user.id, "character_deleted", {
+        character_id: characterId, cleanup_jobs: jobs.length, cleanup_pending: cleanupPending
+      });
+      return json({ ok: true, active_character_id: nextActiveId, cleanup_pending: cleanupPending });
+    }
+
     if (action === "my_assets") {
       const user = requireUser();
       const { data: assets, error } = await db.from("vio_character_assets").select("expression,storage_path,bucket_id,character_id").eq("user_id", user.id);
@@ -987,20 +1122,40 @@ Deno.serve(async (req) => {
     if (action === "record_asset") {
       const user = requireUser();
       const path = String(body.storage_path || "");
+      const characterId = String(body.character_id || "");
       const expression = String(body.expression || "");
       const mime = String(body.mime_type || "");
       const size = Number(body.size_bytes);
-      if (path.length > 512 || !path.startsWith(`${user.id}/`) || path.split("/").some(part => !part || part === "." || part === "..") || !["idle", "talking", "blink", "talking_blink", "thumbnail"].includes(expression) || !["image/png", "image/webp"].includes(mime) || !Number.isSafeInteger(size) || size < 1 || size > 8388608) return json({ ok: false, error: "Asset metadata is invalid." }, 400);
-      let { data: character } = await db.from("vio_characters").select("id").eq("user_id", user.id).eq("name", "Default").maybeSingle();
-      if (!character) {
-        const { data, error } = await db.from("vio_characters").insert({ user_id: user.id, name: "Default" }).select("id").single();
-        if (error) throw error;
-        character = data;
-        await db.from("vio_profiles").upsert({ user_id: user.id, active_character_id: character.id });
+      const ext = mime === "image/webp" ? "webp" : "png";
+      const expectedPath = `${user.id}/characters/${characterId}/${expression}.${ext}`;
+      if (!characterId || path !== expectedPath || path.length > 512 ||
+          !["idle", "talking", "blink", "talking_blink", "thumbnail"].includes(expression) ||
+          !["image/png", "image/webp"].includes(mime) ||
+          !Number.isSafeInteger(size) || size < 1 || size > 8388608) {
+        return json({ ok: false, error: "Asset metadata is invalid or path does not match the selected character." }, 400);
       }
-      const { error } = await db.from("vio_character_assets").upsert({ user_id: user.id, character_id: character.id, expression, storage_path: path, bucket_id: "vio-studio-assets", mime_type: mime, size_bytes: size, updated_at: new Date().toISOString() }, { onConflict: "character_id,expression" });
+      const { data: character, error: characterError } = await db.from("vio_characters")
+        .select("id").eq("id", characterId).eq("user_id", user.id).maybeSingle();
+      if (characterError) throw characterError;
+      if (!character) return json({ ok: false, error: "CHARACTER_NOT_FOUND" }, 404);
+      const fileName = path.split("/").pop() || "";
+      const { data: storedFiles, error: storageError } = await db.storage.from("vio-studio-assets")
+        .list(path.split("/").slice(0, -1).join("/"), { search: fileName, limit: 20 });
+      if (storageError) throw storageError;
+      const storedFile = (storedFiles || []).find((file: any) => file.name === fileName);
+      if (!storedFile) return json({ ok: false, error: "Uploaded expression object was not found in Storage." }, 409);
+      const storedSize = Number(storedFile.metadata?.size ?? storedFile.metadata?.contentLength);
+      if (Number.isFinite(storedSize) && storedSize !== size) return json({ ok: false, error: "Uploaded expression size does not match metadata." }, 409);
+      const { error } = await db.from("vio_character_assets").upsert({
+        user_id: user.id, character_id: characterId, expression, storage_path: path,
+        bucket_id: "vio-studio-assets", mime_type: mime, size_bytes: size,
+        updated_at: new Date().toISOString()
+      }, { onConflict: "character_id,expression" });
       if (error) throw error;
-      return json({ ok: true });
+      await audit(db, user.id, user.id, "character_asset_uploaded", {
+        character_id: characterId, expression, size_bytes: size, mime_type: mime
+      });
+      return json({ ok: true, character_id: characterId, expression });
     }
 
     if (action === "record_accessory") {
