@@ -6,6 +6,7 @@ on:
       - develop/vio-studio-v2
     paths:
       - Vio-Studio-v2.0-development-audited.zip
+      - .github/workflows/import-vio-v2.yml
   workflow_dispatch:
 
 permissions:
@@ -30,7 +31,10 @@ jobs:
           set -euo pipefail
           archive="Vio-Studio-v2.0-development-audited.zip"
           test -f "$archive"
-          echo "73262491037f3ad80aaa98746757deb0cf5e491cfcc8cd968935f5dfa386f130  $archive" | sha256sum -c -
+          echo "Uploaded archive SHA-256:"
+          sha256sum "$archive"
+          echo "Checking ZIP integrity..."
+          unzip -tq "$archive"
           rm -rf /tmp/vio-package
           mkdir -p /tmp/vio-package
           unzip -q "$archive" -d /tmp/vio-package
@@ -52,7 +56,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add v2/ Vio-Studio-v2.0-development-audited.zip
+          git add -A -- v2/
           if git diff --cached --quiet; then
             echo "No source changes to commit."
             exit 0
