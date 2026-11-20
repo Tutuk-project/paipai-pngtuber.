@@ -390,12 +390,16 @@ function renderSettings(menuId) {
         thickness: 8, invert: false, states: effectStates.map(([value]) => value),
         targets: ["avatar", "accessories"], ...(legacy || {})
       };
-      effects[key].states = Array.isArray(effects[key].states)
-        ? effects[key].states.map(state => state === "talkingBlink" ? "talking_blink" : state).filter(state => effectStates.some(([value]) => value === state))
+      const savedStates = Array.isArray(effects[key].states)
+        ? effects[key].states.map(state => state === "talkingBlink" ? "talking_blink" : state)
         : effectStates.map(([value]) => value);
-      effects[key].targets = Array.isArray(effects[key].targets)
-        ? effects[key].targets.filter(target => target === "avatar" || target === "accessories")
-        : ["avatar", "accessories"];
+      effects[key].states = savedStates.includes("all")
+        ? effectStates.map(([value]) => value)
+        : savedStates.filter(state => effectStates.some(([value]) => value === state));
+      const savedTargets = Array.isArray(effects[key].targets) ? effects[key].targets : ["avatar", "accessories"];
+      effects[key].targets = savedTargets.includes("all")
+        ? ["avatar", "accessories"]
+        : savedTargets.filter(target => target === "avatar" || target === "accessories");
       if (key === "filter") effects[key].filter = { hue: 0, saturation: 100, brightness: 100, contrast: 100, invert: 0, grayscale: 0, sepia: 0, ...(legacy?.filter && typeof legacy.filter === "object" ? legacy.filter : {}) };
     }
     const globalField = document.createElement("div"); globalField.className = "setting-field";
