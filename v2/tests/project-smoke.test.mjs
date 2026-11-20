@@ -361,3 +361,16 @@ test("Realtime read and write require active, unexpired rooms", () => {
   }
   assert.match(readPolicy, /vio_overlay_devices[\s\S]*?r\.status\s*=\s*'active'/i);
 });
+
+
+test("Admin deletion disables identity and revokes support/rooms before Auth cleanup", () => {
+  const edge = read("supabase/functions/vio-api/index.ts");
+  const deletion = edge.slice(edge.indexOf('if (action === "admin_delete_user")'), edge.indexOf('if (action === "profile_get")'));
+  assert.ok(deletion.indexOf('update({ is_active: false })') < deletion.indexOf("db.auth.admin.deleteUser"));
+  assert.ok(deletion.indexOf('update({ ended_at: new Date().toISOString() })') < deletion.indexOf("db.auth.admin.deleteUser"));
+  assert.ok(deletion.indexOf('overlay_token_hash: null') < deletion.indexOf("db.auth.admin.deleteUser"));
+  assert.ok(deletion.includes('status: "closed"'));
+  assert.ok(deletion.includes("account remains disabled"));
+  assert.ok(deletion.includes("deletion start audit failed"));
+  assert.ok(deletion.includes("await cancelDeletionJobs"));
+});
