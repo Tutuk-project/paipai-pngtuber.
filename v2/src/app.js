@@ -338,6 +338,8 @@ function renderSettings(menuId) {
         prefs.background = { ...background };
         mode.value = background.mode;
         drawPreview();
+        if (currentRoom) await loadRoomMembers();
+        await broadcastMemberAssetsUpdated();
         showMessage("loginMessage", "Background berhasil diunggah.", "success");
       } catch (error) { alert(`Upload background gagal: ${error.message}`); }
     });
@@ -354,7 +356,7 @@ function renderSettings(menuId) {
     }
     const save = actionButton("Save visual settings", async () => {
       prefs.background = background; prefs.effects = effects;
-      try { await api("profile_save", { display_name: currentUser.display_name || currentUser.username, preferences: prefs }); showMessage("loginMessage","Visual settings saved.","success"); }
+      try { await api("profile_save", { display_name: currentUser.display_name || currentUser.username, preferences: prefs }); await broadcastMemberAssetsUpdated(); showMessage("loginMessage","Visual settings saved.","success"); }
       catch (error) { alert(`Gagal menyimpan efek: ${error.message}`); }
     }, true);
     content.append(grid, resolutionTitle, resolutionWrap, backgroundTitle, bgWrap, effectsTitle, effectsWrap, save);
@@ -624,6 +626,7 @@ async function uploadCharacterAccessories(files) {
   drawPreview();
   renderAccessorySettingsList();
   if (currentRoom) await loadRoomMembers();
+  await broadcastMemberAssetsUpdated();
 }
 
 function renderAccessorySettingsList() {
@@ -695,6 +698,8 @@ function renderAccessorySettingsList() {
         characterAccessories = characterAccessories.filter(x => x.id !== item.id);
         if (selectedAccessoryId === item.id) selectedAccessoryId = null;
         drawPreview(); renderAccessorySettingsList();
+        if (currentRoom) await loadRoomMembers();
+        await broadcastMemberAssetsUpdated();
       } catch (error) { alert(`Gagal menghapus aksesori: ${error.message}`); }
     });
     card.append(remove);
@@ -709,6 +714,7 @@ async function saveAccessorySettings(item) {
       mirror: !!item.mirror, follow_avatar: item.follow !== false, effects_enabled: item.effectsEnabled !== false
     });
     if (currentRoom) await loadRoomMembers();
+    await broadcastMemberAssetsUpdated();
   } catch (error) { alert(`Pengaturan aksesori gagal disimpan: ${error.message}`); }
 }
 
@@ -729,6 +735,7 @@ async function uploadCharacterAsset(state, file) {
     showMessage("loginMessage", `${state} asset berhasil diunggah.`, "success");
     drawPreview();
     await api("record_asset", { storage_path: storagePath, expression: state, mime_type: file.type, size_bytes: file.size });
+    await broadcastMemberAssetsUpdated();
   } catch (error) {
     alert(`Upload gagal: ${error.message}`);
   }
@@ -984,6 +991,10 @@ async function subscribeRoom(roomId) {
       if (member) member.overrides = { ...(member.overrides || {}), ...payload.overrides };
       renderRoomParticipants();
     })
+    .on("broadcast", { event: "member-assets-updated" }, ({ payload }) => {
+      if (!payload?.user_id || payload.user_id === currentUser.id) return;
+      loadRoomMembers().catch(console.warn);
+    })
     .on("presence", { event: "sync" }, () => {
       const state = roomChannel.presenceState();
       $("participantCount").textContent = `${Object.keys(state).length} / ${currentRoom.capacity} connected`;
@@ -1014,6 +1025,11 @@ async function broadcastPlayerLayout() {
   if (!roomChannel || !currentRoom) return;
   const { scale, x, y } = roomOverrides;
   await roomChannel.send({ type: "broadcast", event: "player-layout", payload: { user_id: currentUser.id, seq: ++layoutSequence, overrides: { scale, x, y }, at: Date.now() } });
+}
+
+async function broadcastMemberAssetsUpdated() {
+  if (!roomChannel || !currentRoom) return;
+  await roomChannel.send({ type: "broadcast", event: "member-assets-updated", payload: { user_id: currentUser.id, at: Date.now() } });
 }
 
 async function loadRoomMembers() {
