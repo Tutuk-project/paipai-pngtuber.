@@ -1206,7 +1206,7 @@ Deno.serve(async (req) => {
       const fileName = pathParts.pop() || "";
       const folderPath = pathParts.join("/");
       if (!characterId || !storagePath.startsWith(expectedPrefix) ||
-          pathParts.length !== 5 || pathParts.slice(0, 4).join("/") !== `${user.id}/characters/${characterId}/accessories` ||
+          pathParts.length !== 4 || pathParts.slice(0, 4).join("/") !== `${user.id}/characters/${characterId}/accessories` ||
           !fileName || fileName === "." || fileName === ".." ||
           ![ "image/png", "image/webp" ].includes(mime) ||
           !Number.isSafeInteger(size) || size < 1 || size > 8388608 ||
