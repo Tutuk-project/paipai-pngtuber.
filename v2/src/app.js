@@ -372,12 +372,92 @@ function renderSettings(menuId) {
     bgWrap.append(clearBackgroundButton);
     const effectsTitle = document.createElement("h3"); effectsTitle.textContent = "Visual effects";
     const effectsWrap = document.createElement("div"); effectsWrap.className = "setting-grid";
-    const effects = { glow:{enabled:false,intensity:24,color:"#ffd7b8"}, shadow:{enabled:false,intensity:16,color:"#101010"}, stroke:{enabled:false,intensity:45,color:"#ffffff",thickness:5}, filter:{enabled:false,hue:0,saturation:100,brightness:100,contrast:100,grayscale:0,sepia:0}, distort:{enabled:false,intensity:20}, ...(prefs.effects || {}) };
-    for (const [key,label] of [["glow","Glow / bloom"],["shadow","Shadow"],["stroke","Stroke"],["filter","Color filter"],["distort","Distortion"]]) {
+    const effectKeys = [
+      ["filter", "Filter warna"], ["stroke", "Stroke"], ["shadow", "Shadow"],
+      ["bloom", "Emission / bloom"], ["distort", "Distorsi"], ["eagle", "Eagle eye"], ["shake", "Bergetar"]
+    ];
+    const effectStates = [["idle", "Idle"], ["talking", "Talking"], ["blink", "Blink"], ["talking_blink", "Talking + Blink"]];
+    const rawEffects = prefs.effects || {};
+    const anyEffectEnabled = effectKeys.some(([key]) => (rawEffects[key] || (key === "bloom" ? rawEffects.glow : null))?.enabled);
+    const effects = {
+      enabled: rawEffects.enabled ?? anyEffectEnabled,
+      stickerEffectsEnabled: rawEffects.stickerEffectsEnabled ?? true
+    };
+    for (const [key] of effectKeys) {
+      const legacy = key === "bloom" && !rawEffects.bloom ? rawEffects.glow : rawEffects[key];
+      effects[key] = {
+        enabled: false, intensity: 55, color: key === "shadow" ? "#101010" : "#ffd7b8",
+        thickness: 8, invert: false, states: effectStates.map(([value]) => value),
+        targets: ["avatar", "accessories"], ...(legacy || {})
+      };
+      if (key === "filter") effects[key].filter = { hue: 0, saturation: 100, brightness: 100, contrast: 100, invert: 0, grayscale: 0, sepia: 0, ...(legacy?.filter || {}) };
+    }
+    const globalField = document.createElement("div"); globalField.className = "setting-field";
+    const globalLabel = document.createElement("label"); globalLabel.textContent = "Aktifkan mesin efek";
+    const globalToggle = document.createElement("input"); globalToggle.type = "checkbox"; globalToggle.checked = !!effects.enabled;
+    globalToggle.addEventListener("change", () => { effects.enabled = globalToggle.checked; prefs.effects = effects; drawPreview(); });
+    globalField.append(globalLabel, globalToggle);
+    const stickerField = document.createElement("label"); stickerField.className = "check-field";
+    const stickerToggle = document.createElement("input"); stickerToggle.type = "checkbox"; stickerToggle.checked = !!effects.stickerEffectsEnabled;
+    stickerToggle.addEventListener("change", () => { effects.stickerEffectsEnabled = stickerToggle.checked; prefs.effects = effects; drawPreview(); });
+    stickerField.append(stickerToggle, document.createTextNode("Izinkan efek pada aksesori"));
+    effectsWrap.append(globalField, stickerField);
+
+    const addEffectRange = (host, labelText, value, min, max, step, onValue) => {
+      const field = document.createElement("label"); field.className = "setting-field";
+      const caption = document.createElement("span"); caption.textContent = `${labelText}: ${value}`;
+      const input = document.createElement("input"); input.type = "range"; input.min = String(min); input.max = String(max); input.step = String(step); input.value = String(value);
+      input.addEventListener("input", () => { const next = Number(input.value); caption.textContent = `${labelText}: ${next}`; onValue(next); prefs.effects = effects; drawPreview(); });
+      field.append(caption, input); host.append(field);
+    };
+    const addEffectCheck = (host, labelText, checked, onValue) => {
       const field = document.createElement("label"); field.className = "check-field";
-      const input = document.createElement("input"); input.type = "checkbox"; input.checked = !!effects[key]?.enabled;
-      input.addEventListener("change", () => { effects[key] = { ...effects[key], enabled: input.checked }; prefs.effects = { ...effects }; drawPreview(); });
-      field.append(input,document.createTextNode(label)); effectsWrap.append(field);
+      const input = document.createElement("input"); input.type = "checkbox"; input.checked = !!checked;
+      input.addEventListener("change", () => { onValue(input.checked); prefs.effects = effects; drawPreview(); });
+      field.append(input, document.createTextNode(labelText)); host.append(field);
+    };
+    for (const [key, labelText] of effectKeys) {
+      const effect = effects[key];
+      const details = document.createElement("details");
+      details.className = "setting-field";
+      details.style.cssText = "padding:10px;border:1px solid var(--line);border-radius:12px";
+      const summary = document.createElement("summary"); summary.textContent = labelText; summary.style.cursor = "pointer";
+      details.append(summary);
+      addEffectCheck(details, "Aktif", effect.enabled, value => { effect.enabled = value; });
+      addEffectRange(details, "Intensitas", effect.intensity, 0, 100, 1, value => { effect.intensity = value; });
+      if (["stroke", "shadow", "bloom"].includes(key)) {
+        const colorField = document.createElement("label"); colorField.className = "setting-field";
+        const colorLabel = document.createElement("span"); colorLabel.textContent = "Warna";
+        const color = document.createElement("input"); color.type = "color"; color.value = effect.color || "#ffd7b8";
+        color.addEventListener("input", () => { effect.color = color.value; prefs.effects = effects; drawPreview(); });
+        colorField.append(colorLabel, color); details.append(colorField);
+      }
+      if (key === "stroke") {
+        addEffectRange(details, "Ketebalan", effect.thickness || 8, 1, 24, 1, value => { effect.thickness = value; });
+        addEffectCheck(details, "Mode invert", effect.invert, value => { effect.invert = value; });
+      }
+      if (key === "filter") {
+        for (const [param, title, min, max, step] of [
+          ["hue", "Hue", -180, 180, 1], ["saturation", "Saturation", 0, 200, 1],
+          ["brightness", "Brightness", 0, 200, 1], ["contrast", "Contrast", 0, 200, 1],
+          ["invert", "Invert", 0, 100, 1], ["grayscale", "Grayscale", 0, 100, 1], ["sepia", "Sepia", 0, 100, 1]
+        ]) addEffectRange(details, title, effect.filter[param], min, max, step, value => { effect.filter[param] = value; });
+      }
+      const stateTitle = document.createElement("p"); stateTitle.className = "muted"; stateTitle.textContent = "Ekspresi yang terkena efek";
+      details.append(stateTitle);
+      const stateGrid = document.createElement("div"); stateGrid.className = "setting-grid";
+      for (const [state, title] of effectStates) addEffectCheck(stateGrid, title, effect.states.includes(state), value => {
+        effect.states = value ? [...new Set([...effect.states, state])] : effect.states.filter(item => item !== state);
+      });
+      details.append(stateGrid);
+      const targetTitle = document.createElement("p"); targetTitle.className = "muted"; targetTitle.textContent = "Target efek";
+      details.append(targetTitle);
+      const targetGrid = document.createElement("div"); targetGrid.className = "setting-grid";
+      for (const [target, title] of [["avatar", "Avatar"], ["accessories", "Aksesori"]]) addEffectCheck(targetGrid, title, effect.targets.includes(target), value => {
+        effect.targets = value ? [...new Set([...effect.targets, target])] : effect.targets.filter(item => item !== target);
+      });
+      details.append(targetGrid);
+      effectsWrap.append(details);
     }
     const save = actionButton("Save visual settings", async () => {
       prefs.background = background; prefs.effects = effects;
