@@ -180,7 +180,7 @@ test("GO Collaboration shared stage uses a dedicated landscape canvas", () => {
 
 test("room layout sliders update the local member renderer immediately", () => {
   const app = read("src/app.js");
-  const controls = app.match(/function renderRoomControls\(\)[\s\S]*?async function subscribeRoom/)?.[0] || "";
+  const controls = app.match(/function renderRoomControls\([^)]*\)[\s\S]*?async function subscribeRoom/)?.[0] || "";
   const stage = app.match(/function renderRoomParticipants\(\)[\s\S]*?function drawRoomStageFrame/)?.[0] || "";
   assert.match(controls, /ownMember\.overrides = \{ \.\.\.\(ownMember\.overrides \|\| \{\}\), \[item\.key\]: value \}/);
   assert.match(stage, /member\.user_id === currentUser\.id[\s\S]*?\.\.\.roomOverrides/);
