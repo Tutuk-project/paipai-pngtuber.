@@ -425,6 +425,10 @@ Deno.serve(async (req) => {
           (preferences as Record<string, unknown>)[key] = value;
         }
       }
+      const output = preferences as Record<string, unknown>;
+      const outputWidth = Number(output.outputWidth || 1080);
+      const outputHeight = Number(output.outputHeight || 1920);
+      if (outputWidth * outputHeight > 8294400) return json({ ok: false, error: "Output resolution exceeds the 8.3 megapixel safety limit." }, 400);
       if (JSON.stringify(preferences).length > 24000) return json({ ok: false, error: "Profile settings are too large." }, 413);
       const { error: accountError } = await db.from("vio_app_users").update({ display_name: displayName }).eq("id", user.id);
       if (accountError) throw accountError;
