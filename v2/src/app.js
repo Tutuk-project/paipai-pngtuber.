@@ -1527,50 +1527,146 @@ async function enterRoom(room) {
   showView("collaborationView");
   $("pageTitle").textContent = "GO Collaboration";
   $("roomCodeLabel").textContent = room.room_code;
-  $("participantCount").textContent = `1 / ${room.capacity} connected`;
+  $("participantCount").textContent = "Loading participants…";
   renderRoomControls();
-  await subscribeRoom(room.id);
-  await loadRoomMembers();
-  await broadcastPlayerState(currentMicState);
+  try {
+    await subscribeRoom(room.id);
+    await loadRoomMembers();
+    await broadcastPlayerState(currentMicState);
+  } catch (error) {
+    console.error("Room initialization failed:", error);
+    $("participantCount").textContent = "Room sync failed";
+    const notice = $("roomStageNotice");
+    if (notice) { notice.textContent = `Room gagal disinkronkan: ${error.message}`; notice.hidden = false; notice.classList.add("is-error"); }
+    showToast(`Kolaborasi gagal disinkronkan: ${error.message}`, "error");
+  }
 }
 
-function renderRoomControls() {
+function createRoomControlGroup(title, description = "") {
+  const group = document.createElement("section");
+  group.className = "room-control-group";
+  const header = document.createElement("div");
+  header.className = "room-control-heading";
+  const heading = document.createElement("h3");
+  heading.textContent = title;
+  header.append(heading);
+  if (description) {
+    const hint = document.createElement("p");
+    hint.textContent = description;
+    header.append(hint);
+  }
+  group.append(header);
+  const fields = document.createElement("div");
+  fields.className = "room-control-fields";
+  group.append(fields);
+  return { group, fields };
+}
+
+function renderRoomControls(options = {}) {
   const panel = $("roomControls");
+  if (!panel) return;
   panel.replaceChildren();
-  const grid = document.createElement("div");
-  grid.className = "setting-grid";
-  const deviceField = document.createElement("div"); deviceField.className = "setting-field";
-  const deviceLabel = document.createElement("label"); deviceLabel.htmlFor = "roomDevice"; deviceLabel.textContent = "Microphone input";
-  const deviceSelect = document.createElement("select"); deviceSelect.id = "roomDevice"; deviceSelect.className = "select-input"; deviceSelect.innerHTML = '<option value="">System default</option>'; deviceSelect.value = roomOverrides.deviceId || "";
+
+  const layoutGroup = createRoomControlGroup("Avatar layout", "Atur skala dan posisi avatar hanya untuk room aktif.");
+  const audioGroup = createRoomControlGroup("Audio input", "Atur sumber mikrofon dan sensitivitas deteksi suara.");
+
+  const deviceField = document.createElement("div");
+  deviceField.className = "room-control-field room-device-field";
+  const deviceLabel = document.createElement("label");
+  deviceLabel.htmlFor = "roomDevice";
+  deviceLabel.textContent = "Microphone input";
+  const deviceSelect = document.createElement("select");
+  deviceSelect.id = "roomDevice";
+  deviceSelect.className = "select-input";
+  deviceSelect.append(new Option("System default", ""));
+  deviceSelect.value = roomOverrides.deviceId || "";
   deviceSelect.addEventListener("change", async () => {
     roomOverrides.deviceId = deviceSelect.value;
-    if (audio) { await audio.stop(); audio.setOptions({ deviceId: roomOverrides.deviceId }); await audio.start(); }
-    api("set_room_override", { room_id: currentRoom.id, overrides: { deviceId: roomOverrides.deviceId } }).catch(console.warn);
+    try {
+      if (audio) { await audio.stop(); audio.setOptions({ deviceId: roomOverrides.deviceId }); await audio.start(); }
+      await api("set_room_override", { room_id: currentRoom.id, overrides: { deviceId: roomOverrides.deviceId } });
+    } catch (error) {
+      showToast(`Mikrofon room gagal diperbarui: ${error.message}`, "error");
+    }
   });
   deviceField.append(deviceLabel, deviceSelect);
-  for (const [key, label, min, max, step, value] of [
-    ["scale", "Avatar scale", 0.2, 2.2, 0.05, roomOverrides.scale ?? 1],
-    ["x", "Horizontal position", -100, 100, 1, 0],
-    ["y", "Vertical position", -100, 100, 1, 0],
-    ["sensitivity", "Mic sensitivity", 0.5, 2, 0.05, roomOverrides.sensitivity],
-    ["boostDb", "Mic booster (dB)", 0, 24, 1, roomOverrides.boostDb],
-  ]) {
-    const wrap = document.createElement("div"); wrap.className = "setting-field";
-    const lab = document.createElement("label"); lab.textContent = label;
-    const range = document.createElement("input"); range.type = "range"; range.className = "range-input"; range.min = min; range.max = max; range.step = step; range.value = value;
+  audioGroup.fields.append(deviceField);
+
+  const definitions = [
+    { key: "scale", label: "Avatar scale", min: 0, max: 2, step: 0.05, value: roomOverrides.scale ?? 1, group: layoutGroup.fields, format: value => `${value.toFixed(2)}×` },
+    { key: "x", label: "Horizontal position", min: -100, max: 100, step: 1, value: roomOverrides.x ?? 0, group: layoutGroup.fields, format: value => `${Math.round(value)}` },
+    { key: "y", label: "Vertical position", min: -100, max: 100, step: 1, value: roomOverrides.y ?? 0, group: layoutGroup.fields, format: value => `${Math.round(value)}` },
+    { key: "sensitivity", label: "Mic sensitivity", min: 0.5, max: 2, step: 0.05, value: roomOverrides.sensitivity ?? 1, group: audioGroup.fields, format: value => `${value.toFixed(2)}×` },
+    { key: "boostDb", label: "Mic booster", min: 0, max: 24, step: 1, value: roomOverrides.boostDb ?? 6, group: audioGroup.fields, format: value => `${Math.round(value)} dB` }
+  ];
+
+  for (const item of definitions) {
+    const field = document.createElement("div");
+    field.className = "room-control-field";
+    const labelRow = document.createElement("div");
+    labelRow.className = "room-control-label-row";
+    const label = document.createElement("label");
+    const inputId = `roomOverride_${item.key}`;
+    label.htmlFor = inputId;
+    label.textContent = item.label;
+    const output = document.createElement("output");
+    output.className = "room-control-value";
+    output.textContent = item.format(Number(item.value));
+    output.htmlFor = inputId;
+
+    const range = document.createElement("input");
+    range.id = inputId;
+    range.type = "range";
+    range.className = "range-input";
+    range.min = String(item.min);
+    range.max = String(item.max);
+    range.step = String(item.step);
+    range.value = String(Math.max(item.min, Math.min(item.max, Number(item.value) || 0)));
     range.addEventListener("input", () => {
-      roomOverrides[key] = Number(range.value);
-      if (key === "sensitivity" || key === "boostDb") audio?.setOptions({ [key]: Number(range.value) });
-      api("set_room_override", { room_id: currentRoom.id, overrides: { [key]: Number(range.value) } }).catch(console.warn);
-      if (["scale", "x", "y"].includes(key)) {
-        renderRoomParticipants();
-        broadcastPlayerLayout().catch(console.warn);
+      const value = Number(range.value);
+      roomOverrides[item.key] = value;
+      output.textContent = item.format(value);
+      if (item.key === "sensitivity" || item.key === "boostDb") audio?.setOptions({ [item.key]: value });
+      if (["scale", "x", "y"].includes(item.key)) renderRoomParticipants();
+    });
+    range.addEventListener("change", async () => {
+      const value = Number(range.value);
+      try {
+        await api("set_room_override", { room_id: currentRoom.id, overrides: { [item.key]: value } });
+        if (["scale", "x", "y"].includes(item.key)) await broadcastPlayerLayout();
+      } catch (error) {
+        showToast(`${item.label} gagal disimpan: ${error.message}`, "error");
       }
     });
-    wrap.append(lab, range); grid.append(wrap);
+    labelRow.append(label, output);
+    field.append(labelRow, range);
+    item.group.append(field);
   }
-  panel.append(deviceField, grid, Object.assign(document.createElement("p"), { className: "muted", textContent: "Room overrides hanya berlaku di room ini dan tidak menimpa pengaturan profil." }));
-  refreshAudioDevices();
+
+  const layoutReset = document.createElement("button");
+  layoutReset.type = "button";
+  layoutReset.className = "button button-quiet room-reset-button";
+  layoutReset.textContent = "Reset avatar layout";
+  layoutReset.addEventListener("click", async () => {
+    roomOverrides.scale = 1; roomOverrides.x = 0; roomOverrides.y = 0;
+    renderRoomControls();
+    renderRoomParticipants();
+    try {
+      await api("set_room_override", { room_id: currentRoom.id, overrides: { scale: 1, x: 0, y: 0 } });
+      await broadcastPlayerLayout();
+    } catch (error) {
+      showToast(`Layout gagal direset: ${error.message}`, "error");
+    }
+  });
+  layoutGroup.group.append(layoutReset);
+  const controlsLayout = document.createElement("div");
+  controlsLayout.className = "room-controls-layout";
+  controlsLayout.append(layoutGroup.group, audioGroup.group);
+  const note = document.createElement("p");
+  note.className = "room-controls-note";
+  note.textContent = "Perubahan ini hanya berlaku di room aktif dan tidak menimpa pengaturan profil.";
+  panel.append(controlsLayout, note);
+  if (options.refreshDevices !== false) refreshAudioDevices();
 }
 
 async function subscribeRoom(roomId) {
@@ -1643,11 +1739,26 @@ async function loadRoomMembers() {
     const ownMember = roomMembers.find(member => member.user_id === currentUser.id);
     if (ownMember?.overrides) {
       roomOverrides = { ...roomOverrides, ...ownMember.overrides };
-      audio?.setOptions({ deviceId: roomOverrides.deviceId, sensitivity: roomOverrides.sensitivity, boostDb: roomOverrides.boostDb });
+      audio?.setOptions({ deviceId: roomOverrides.deviceId || "", sensitivity: roomOverrides.sensitivity ?? 1, boostDb: roomOverrides.boostDb ?? 6 });
+      renderRoomControls();
     }
     for (const member of roomMembers) member.state = remotePlayerStates.get(member.user_id) || member.state || "idle";
     renderRoomParticipants();
-  } catch (error) { console.warn("Room member load:", error); }
+    return roomMembers;
+  } catch (error) {
+    roomMembers = [];
+    console.warn("Room member load:", error);
+    $("participantCount").textContent = "Room data unavailable";
+    const tags = $("participantNames");
+    if (tags) tags.textContent = "Failed to load participant list";
+    const notice = $("roomStageNotice");
+    if (notice) {
+      notice.textContent = `Tidak dapat memuat anggota room: ${error.message}`;
+      notice.hidden = false;
+      notice.classList.add("is-error");
+    }
+    return [];
+  }
 }
 
 function renderRoomParticipants() {
@@ -1664,14 +1775,32 @@ function renderRoomParticipants() {
   const slotWidth = canvas.width / Math.max(1, visible.length);
   const tags = $("participantNames");
   tags.replaceChildren();
+  const notice = $("roomStageNotice");
+  $("participantCount").textContent = `${visible.length} / ${currentRoom?.capacity || 4} participants`;
+
   if (!visible.length) {
     if (renderFrame) cancelAnimationFrame(renderFrame);
     renderFrame = 0;
     for (const entry of roomPreviewRenderers.values()) entry.renderer.stop();
     roomPreviewRenderers.clear();
-    tags.textContent = "Waiting for participants…";
+    tags.textContent = "No participant data";
+    if (notice) {
+      notice.textContent = "Daftar peserta belum berhasil dimuat. Periksa koneksi room, lalu buka ulang Collaboration.";
+      notice.hidden = false;
+      notice.classList.remove("is-error");
+    }
     return;
   }
+
+  const hasAvatarAssets = visible.some(member => Object.values(member.assets || {}).some(Boolean));
+  if (notice) {
+    notice.textContent = hasAvatarAssets
+      ? ""
+      : "Peserta sudah terdaftar, tetapi PNG avatar belum tersedia. Unggah setidaknya ekspresi Idle di menu Character.";
+    notice.hidden = hasAvatarAssets;
+    notice.classList.remove("is-error");
+  }
+
   const visibleIds = new Set(visible.map(member => member.user_id));
   for (const [userId, entry] of roomPreviewRenderers) {
     if (!visibleIds.has(userId)) {
@@ -1679,6 +1808,7 @@ function renderRoomParticipants() {
       roomPreviewRenderers.delete(userId);
     }
   }
+
   for (const [index, member] of visible.entries()) {
     let entry = roomPreviewRenderers.get(member.user_id);
     if (!entry) {
@@ -1686,19 +1816,19 @@ function renderRoomParticipants() {
       entry = { canvas: playerCanvas, renderer: new AvatarRenderer(playerCanvas) };
       roomPreviewRenderers.set(member.user_id, entry);
     }
-    const width = Math.max(1, Math.round(slotWidth));
-    const height = Math.max(1, canvas.height);
-    if (entry.canvas.width !== width || entry.canvas.height !== height) {
-      entry.canvas.width = width;
-      entry.canvas.height = height;
+    const playerWidth = Math.max(1, Math.round(slotWidth));
+    const playerHeight = Math.max(1, canvas.height);
+    if (entry.canvas.width !== playerWidth || entry.canvas.height !== playerHeight) {
+      entry.canvas.width = playerWidth;
+      entry.canvas.height = playerHeight;
     }
     const overrides = member.overrides || {};
     const preferences = {
       ...(member.preferences || {}),
       scale: overrides.scale ?? member.preferences?.scale ?? 1,
       avatarScalePercent: overrides.scale != null ? undefined : member.preferences?.avatarScalePercent,
-      offsetX: Math.max(-100, Math.min(100, Number(overrides.x) || 0)) * width * 0.004,
-      offsetY: Math.max(-100, Math.min(100, Number(overrides.y) || 0)) * height * 0.0035
+      offsetX: Math.max(-100, Math.min(100, Number(overrides.x) || 0)) * playerWidth * 0.004,
+      offsetY: Math.max(-100, Math.min(100, Number(overrides.y) || 0)) * playerHeight * 0.0035
     };
     entry.renderer.setAssets(member.assets || {});
     entry.renderer.setAccessories(member.accessories || []);
@@ -1709,12 +1839,11 @@ function renderRoomParticipants() {
     entry.renderer.setState(member.state === "talking" ? "talking" : "idle");
     entry.renderer.start();
 
-
     const state = member.state === "talking" ? "talking" : "idle";
     const tag = document.createElement("span");
     tag.className = `participant-tag ${state === "talking" ? "is-talking" : ""}`;
     const name = document.createElement("strong");
-    name.textContent = member.username;
+    name.textContent = member.username || "Participant";
     tag.append(name, document.createTextNode(state.toUpperCase()));
     tags.append(tag);
   }
@@ -1754,6 +1883,8 @@ async function leaveRoom(restoreView = true) {
   for (const entry of roomPreviewRenderers.values()) entry.renderer.stop();
   roomPreviewRenderers.clear();
   currentRoom = null; roomMembers = []; remotePlayerStates.clear(); remotePlayerSequences.clear(); remoteLayoutSequences.clear(); roomPreviewImages.clear();
+  generatedOverlayUrl = "";
+  syncOverlayGeneratorButtons("Generate OBS Link", false, "generate");
   $("app").classList.remove("in-room");
   if (restoreView && currentUser) selectMenu("profile");
 }
@@ -1762,12 +1893,14 @@ async function generateOverlayLink(button = null) {
   const sourceButton = button || $("obsLinkButton") || $("roomObsLink");
   if (overlayGenerationBusy) return;
   if (generatedOverlayUrl) {
+    $("overlayLinkUrl").value = generatedOverlayUrl;
+    if (!$("overlayLinkDialog").open) $("overlayLinkDialog").showModal();
     try {
       if (sourceButton) { sourceButton.disabled = true; sourceButton.textContent = "Menyalin…"; }
       await copyText(generatedOverlayUrl);
-      showToast("Berhasil disalin");
+      showToast("Link OBS berhasil disalin");
     } catch (error) {
-      showToast(`Gagal menyalin link: ${error.message}`, "error");
+      showToast(`Link siap, tetapi gagal disalin otomatis: ${error.message}`, "error");
     } finally {
       syncOverlayGeneratorButtons("Salin Link", false, "copy");
     }
@@ -1803,11 +1936,14 @@ async function generateOverlayLink(button = null) {
       await loadRoomMembers();
     }
     const result = await api("issue_room_overlay", { room_id: room.id });
-    const url = new URL("./overlay.html", window.location.href);
+    if (!result?.room_id || !result?.overlay_token || String(result.overlay_token).length < 20) throw new Error("Server tidak mengembalikan kredensial overlay yang valid.");
+    const url = new URL("../overlay.html", import.meta.url);
     url.hash = new URLSearchParams({ room: result.room_id, token: result.overlay_token }).toString();
     generatedOverlayUrl = url.toString();
+    $("overlayLinkUrl").value = generatedOverlayUrl;
     syncOverlayGeneratorButtons("Salin Link", false, "copy");
-    showToast("Link berhasil dibuat");
+    $("overlayLinkDialog").showModal();
+    showToast("Link OBS siap. Salin URL dari jendela ini.");
   } catch (error) {
     syncOverlayGeneratorButtons("Generate OBS Link", false, "generate");
     showToast(`OBS Link belum bisa dibuat: ${error.message}`, "error");
@@ -1996,7 +2132,10 @@ function setupEvents() {
   $("logoutButton").addEventListener("click", logout);
   $("topRoomButton").addEventListener("click", openRoomChooser);
   $("exitRoom").addEventListener("click", () => leaveRoom(true));
-  $("copyRoomCode").addEventListener("click", async () => { if (currentRoom) await navigator.clipboard.writeText(currentRoom.room_code); });
+  $("copyRoomCode").addEventListener("click", async () => { if (currentRoom) { try { await copyText(currentRoom.room_code); showToast("Kode room disalin"); } catch (error) { showToast(error.message, "error"); } } });
+  $("closeOverlayLink").addEventListener("click", () => $("overlayLinkDialog").close());
+  $("copyOverlayLink").addEventListener("click", async () => { try { await copyText(generatedOverlayUrl); showToast("Link OBS disalin"); } catch (error) { showToast(error.message, "error"); } });
+  $("openOverlayPreview").addEventListener("click", () => { if (generatedOverlayUrl) window.open(generatedOverlayUrl, "_blank", "noopener,noreferrer"); });
   $("avatarScaleDecrease").addEventListener("click", () => changeAvatarScale(-5));
   $("avatarScaleIncrease").addEventListener("click", () => changeAvatarScale(5));
   updateAvatarScaleWidget();
