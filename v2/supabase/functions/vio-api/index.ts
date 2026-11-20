@@ -483,16 +483,21 @@ Deno.serve(async (req) => {
       const previous = (profile?.preferences as any)?.background;
       const background = { ...(previous || {}), mode: isVideo ? "video" : "image", bucket_id: "vio-backgrounds", storage_path: storagePath, mime_type: mime };
       const preferences = { ...(profile?.preferences || {}), background };
+      const oldJob = previous?.storage_path && previous.storage_path !== storagePath
+        ? await enqueueStorageCleanup(db, previous.bucket_id || "vio-backgrounds", previous.storage_path, user.id, user.id, "background_replaced")
+        : null;
       const { error: saveError } = await db.from("vio_profiles").upsert({ user_id: user.id, preferences, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
-      if (saveError) throw saveError;
-      const { data: signed, error: signError } = await db.storage.from("vio-backgrounds").createSignedUrl(storagePath, 3600);
-      if (signError) throw signError;
+      if (saveError) {
+        if (oldJob) await cancelStorageCleanup(db, oldJob.id, "background replacement profile save failed");
+        throw saveError;
+      }
       let cleanupPending = false;
-      if (previous?.storage_path && previous.storage_path !== storagePath) {
-        const oldJob = await enqueueStorageCleanup(db, previous.bucket_id || "vio-backgrounds", previous.storage_path, user.id, user.id, "background_replaced");
+      if (oldJob) {
         const cleanup = await processStorageCleanup(db, oldJob);
         cleanupPending = !cleanup.ok;
       }
+      const { data: signed, error: signError } = await db.storage.from("vio-backgrounds").createSignedUrl(storagePath, 3600);
+      if (signError) throw signError;
       await audit(db, user.id, user.id, "background_asset_updated", { mime_type: mime, size_bytes: size, cleanup_pending: cleanupPending });
       return json({ ok: true, cleanup_pending: cleanupPending, background: { ...background, src: signed.signedUrl } });
     }
