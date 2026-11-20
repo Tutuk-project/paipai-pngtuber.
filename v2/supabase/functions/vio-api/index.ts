@@ -463,7 +463,7 @@ Deno.serve(async (req) => {
       const allStoredAssets = [...(assetsQ.data || []), ...(accessoriesQ.data || [])];
       if (background?.storage_path && background.bucket_id === "vio-backgrounds") allStoredAssets.push({ bucket_id: background.bucket_id, storage_path: background.storage_path });
       const uniqueAssets = [...new Map(allStoredAssets.map((asset: any) => [`${asset.bucket_id}:${asset.storage_path}`, asset])).values()];
-      const cleanupJobs = [];
+      const cleanupJobs: Array<Awaited<ReturnType<typeof enqueueStorageCleanup>>> = [];
       for (const asset of uniqueAssets) {
         cleanupJobs.push(await enqueueStorageCleanup(db, asset.bucket_id, asset.storage_path, admin.id, targetId, "admin_user_deletion"));
       }
