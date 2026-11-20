@@ -79,7 +79,29 @@ const html = `<!doctype html>
     if (pixels[i + 3] > 0) visible++;
     if (pixels[i + 3] > 200 && colors.size < 5000) colors.add(pixels[i] + "," + pixels[i + 1] + "," + pixels[i + 2]);
   }
-  window.__vioVisual = { width: canvas.width, height: canvas.height, visiblePixels: visible, uniqueColors: colors.size, imageCacheSize: renderer.images.size, effectCacheReady: !!renderer.effectCache, baselineHash, effectHashes };
+  const performanceCanvas = document.createElement("canvas");
+  performanceCanvas.width = 1080; performanceCanvas.height = 1920;
+  const performanceRenderer = new AvatarRenderer(performanceCanvas);
+  performanceRenderer.setAssets({ idle: avatarSrc, talking: avatarSrc });
+  const accessoryColors = [["#ff6b6b", "#f06595"], ["#ffd43b", "#fab005"], ["#69db7c", "#38d9a9"], ["#74c0fc", "#4dabf7"]];
+  performanceRenderer.setAccessories(accessoryColors.map(([color, accent], index) => ({
+    src: makeAsset(color, accent), x: 0.2 + index * 0.2, y: 0.28 + (index % 2) * 0.35,
+    w: 0.15, h: 0.16, follow: true, mirror: index % 2 === 0, effectsEnabled: true
+  })));
+  performanceRenderer.setPreferences({ ...common, effects: { enabled: true, stickerEffectsEnabled: true, ...effectConfigs } });
+  await Promise.all([...performanceRenderer.images.values()].filter(Boolean).map(image => image.decode()));
+  performanceRenderer.setState("talking");
+  const performanceStart = performance.now();
+  for (let frame = 0; frame < 12; frame++) performanceRenderer.render(1700 + frame * 34);
+  const performanceElapsedMs = performance.now() - performanceStart;
+  const performancePixels = performanceCanvas.getContext("2d").getImageData(0, 0, performanceCanvas.width, performanceCanvas.height).data;
+  let performanceVisiblePixels = 0;
+  for (let i = 3; i < performancePixels.length; i += 16) if (performancePixels[i] > 0) performanceVisiblePixels++;
+  window.__vioVisual = {
+    width: canvas.width, height: canvas.height, visiblePixels: visible, uniqueColors: colors.size,
+    imageCacheSize: renderer.images.size, effectCacheReady: !!renderer.effectCache, baselineHash, effectHashes,
+    performance: { width: performanceCanvas.width, height: performanceCanvas.height, frames: 12, elapsedMs: performanceElapsedMs, visibleSamples: performanceVisiblePixels, imageCacheSize: performanceRenderer.images.size }
+  };
 </script></body></html>`;
 
 const server = createServer(async (request, response) => {
@@ -117,7 +139,13 @@ try {
     assert.notEqual(hash, result.baselineHash, `${effect} should visibly change rendered pixels.`);
   }
   assert.equal(result.imageCacheSize, 2, "Avatar and accessory images should be the only retained image sources.");
-  console.log("PASS browser renderer visual smoke:", JSON.stringify(result));
+  assert.equal(result.performance.width, 1080);
+  assert.equal(result.performance.height, 1920);
+  assert.equal(result.performance.frames, 12);
+  assert.equal(result.performance.imageCacheSize, 5);
+  assert.ok(result.performance.visibleSamples > 10000, "1080x1920 output should contain visible rendered pixels.");
+  assert.ok(result.performance.elapsedMs < 5000, `12 high-resolution frames exceeded the CI smoke budget: ${result.performance.elapsedMs}ms`);
+  console.log("PASS browser renderer visual/performance smoke:", JSON.stringify(result));
 } finally {
   await browser?.close();
   await new Promise(resolveClose => server.close(resolveClose));
