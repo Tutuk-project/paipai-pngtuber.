@@ -45,6 +45,9 @@ function ensurePlayerRenderer(member, slotWidth) {
   preferences.offsetX = Math.max(-100, Math.min(100, Number(overrides.x) || 0)) * width * 0.004;
   preferences.offsetY = Math.max(-100, Math.min(100, Number(overrides.y) || 0)) * canvas.height * 0.0035;
   renderer.setPreferences(preferences);
+  const background = preferences.background || {};
+  renderer.setBackgroundImage(background.mode === "image" ? background.src : null);
+  renderer.setBackgroundVideo(background.mode === "video" ? background.src : null);
   renderer.setState(states.get(member.user_id) || member.state || "idle");
   return entry;
 }
