@@ -48,6 +48,14 @@ async function audit(db: SupabaseClient, actor: string | null, target: string | 
   }
 }
 
+async function signBackground(db: SupabaseClient, preferences: any) {
+  const background = preferences?.background;
+  if (!background?.storage_path || background.bucket_id !== "vio-studio-assets") return preferences || {};
+  const { data, error } = await db.storage.from(background.bucket_id).createSignedUrl(background.storage_path, 3600);
+  if (error || !data?.signedUrl) return preferences || {};
+  return { ...preferences, background: { ...background, src: data.signedUrl } };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
   if (req.method !== "POST") return json({ ok: false, error: "Method not allowed." }, 405);
@@ -372,10 +380,44 @@ Deno.serve(async (req) => {
       return json({ ok: true, account, profile: profile || { preferences: {}, active_character_id: null } });
     }
 
+    if (action === "record_background_asset") {
+      const user = requireUser();
+      const storagePath = String(body.storage_path || "");
+      const mime = String(body.mime_type || "");
+      const size = Number(body.size_bytes);
+      const allowed = ["image/png", "image/jpeg", "image/webp", "image/gif", "video/mp4", "video/webm"];
+      const isVideo = mime.startsWith("video/");
+      const maxBytes = isVideo ? 62914560 : 20971520;
+      const prefix = `${user.id}/background/`;
+      const parts = storagePath.split("/");
+      if (!storagePath.startsWith(prefix) || parts.length !== 3 || parts.some(part => !part || part === "." || part === "..") || !allowed.includes(mime) || !Number.isSafeInteger(size) || size < 1 || size > maxBytes) return json({ ok: false, error: "Background asset metadata is invalid." }, 400);
+      const fileName = parts[2];
+      const { data: objects, error: listError } = await db.storage.from("vio-studio-assets").list(`${user.id}/background`, { search: fileName, limit: 100 });
+      if (listError) throw listError;
+      const stored = (objects || []).find((item: any) => item.name === fileName);
+      if (!stored || Number(stored.metadata?.size || 0) !== size || (stored.metadata?.mimetype && stored.metadata.mimetype !== mime)) return json({ ok: false, error: "Uploaded background object does not match its metadata." }, 400);
+      const { data: profile, error: profileError } = await db.from("vio_profiles").select("preferences").eq("user_id", user.id).maybeSingle();
+      if (profileError) throw profileError;
+      const previous = (profile?.preferences as any)?.background;
+      const background = { ...(previous || {}), mode: isVideo ? "video" : "image", bucket_id: "vio-studio-assets", storage_path: storagePath, mime_type: mime };
+      const preferences = { ...(profile?.preferences || {}), background };
+      const { error: saveError } = await db.from("vio_profiles").upsert({ user_id: user.id, preferences, updated_at: new Date().toISOString() }, { onConflict: "user_id" });
+      if (saveError) throw saveError;
+      const { data: signed, error: signError } = await db.storage.from("vio-studio-assets").createSignedUrl(storagePath, 3600);
+      if (signError) throw signError;
+      if (previous?.storage_path && previous.storage_path !== storagePath) {
+        const { error: cleanupError } = await db.storage.from("vio-studio-assets").remove([previous.storage_path]);
+        if (cleanupError) console.error("Old background cleanup failed", cleanupError.message);
+      }
+      await audit(db, user.id, user.id, "background_asset_updated", { mime_type: mime, size_bytes: size });
+      return json({ ok: true, background: { ...background, src: signed.signedUrl } });
+    }
+
     if (action === "profile_save") {
       const user = requireUser();
       const displayName = String(body.display_name || user.display_name || user.username).trim().slice(0, 48);
-      const preferences = body.preferences && typeof body.preferences === "object" && !Array.isArray(body.preferences) ? body.preferences as Json : {};
+      const preferences = body.preferences && typeof body.preferences === "object" && !Array.isArray(body.preferences) ? JSON.parse(JSON.stringify(body.preferences)) as Json : {};
+      if (preferences.background && typeof preferences.background === "object") delete (preferences.background as Json).src;
       if (JSON.stringify(preferences).length > 24000) return json({ ok: false, error: "Profile settings are too large." }, 413);
       const { error: accountError } = await db.from("vio_app_users").update({ display_name: displayName }).eq("id", user.id);
       if (accountError) throw accountError;
@@ -445,8 +487,9 @@ Deno.serve(async (req) => {
         const { data } = await db.storage.from(asset.bucket_id).createSignedUrl(asset.storage_path, 3600);
         if (data?.signedUrl) signedAssets[asset.expression] = data.signedUrl;
       }
-      const { data: profile, error: profileError } = await db.from("vio_profiles").select("active_character_id").eq("user_id", user.id).maybeSingle();
+      const { data: profile, error: profileError } = await db.from("vio_profiles").select("active_character_id,preferences").eq("user_id", user.id).maybeSingle();
       if (profileError) throw profileError;
+      const signedPreferences = await signBackground(db, profile?.preferences || {});
       let accessoryQuery = db.from("vio_character_accessories").select("id,name,storage_path,bucket_id,x,y,w,h,mirror,follow_avatar,effects_enabled,sort_order").eq("user_id", user.id).order("sort_order");
       if (profile?.active_character_id) accessoryQuery = accessoryQuery.eq("character_id", profile.active_character_id);
       const { data: accessories, error: accessoryError } = await accessoryQuery;
@@ -456,7 +499,7 @@ Deno.serve(async (req) => {
         if (signError || !data?.signedUrl) return null;
         return { id: item.id, name: item.name, src: data.signedUrl, x: item.x, y: item.y, w: item.w, h: item.h, mirror: item.mirror, follow: item.follow_avatar, effectsEnabled: item.effects_enabled, sort_order: item.sort_order };
       }));
-      return json({ ok: true, assets: signedAssets, accessories: signedAccessories.filter(Boolean) });
+      return json({ ok: true, assets: signedAssets, accessories: signedAccessories.filter(Boolean), background: signedPreferences.background || null });
     }
 
     if (action === "create_room") {
@@ -570,7 +613,7 @@ Deno.serve(async (req) => {
           if (signError || !data?.signedUrl) return null;
           return { id: item.id, name: item.name, src: data.signedUrl, x: item.x, y: item.y, w: item.w, h: item.h, mirror: item.mirror, follow: item.follow_avatar, effectsEnabled: item.effects_enabled, sort_order: item.sort_order };
         }));
-        return { user_id: member.user_id, username: member.vio_app_users?.username || "Unknown", state: member.state || "idle", state_updated_at: member.state_updated_at, assets, accessories: accessories.filter(Boolean), preferences: member.vio_profiles?.preferences || {}, overrides: member.vio_room_overrides?.[0]?.overrides || {} };
+        return { user_id: member.user_id, username: member.vio_app_users?.username || "Unknown", state: member.state || "idle", state_updated_at: member.state_updated_at, assets, accessories: accessories.filter(Boolean), preferences: await signBackground(db, member.vio_profiles?.preferences || {}), overrides: member.vio_room_overrides?.[0]?.overrides || {} };
       }));
       return json({ ok: true, members: mapped });
     }
@@ -702,7 +745,7 @@ Deno.serve(async (req) => {
           if (signError || !data?.signedUrl) return null;
           return { id: item.id, name: item.name, src: data.signedUrl, x: item.x, y: item.y, w: item.w, h: item.h, mirror: item.mirror, follow: item.follow_avatar, effectsEnabled: item.effects_enabled, sort_order: item.sort_order };
         }));
-        return { user_id: member.user_id, username: member.vio_app_users?.username || "Unknown", state: member.state || "idle", state_updated_at: member.state_updated_at, assets, accessories: accessories.filter(Boolean), preferences: member.vio_profiles?.preferences || {}, overrides: member.vio_room_overrides?.[0]?.overrides || {} };
+        return { user_id: member.user_id, username: member.vio_app_users?.username || "Unknown", state: member.state || "idle", state_updated_at: member.state_updated_at, assets, accessories: accessories.filter(Boolean), preferences: await signBackground(db, member.vio_profiles?.preferences || {}), overrides: member.vio_room_overrides?.[0]?.overrides || {} };
       }));
       return json({ ok: true, room: { id: room.id, capacity: room.capacity }, members: mapped });
     }
