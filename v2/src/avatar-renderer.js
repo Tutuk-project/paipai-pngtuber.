@@ -101,7 +101,7 @@ export function normalizeEffects(input = {}) {
     const thickness = Number(incoming.thickness);
     effects[key] = {
       ...structuredClone(EFFECT_DEFAULTS[key]),
-      enabled: incoming.enabled === true,
+      enabled: typeof incoming.enabled === "boolean" ? incoming.enabled : (effects.enabled && Object.keys(incoming).length > 0),
       intensity: Number.isFinite(intensity) ? Math.max(0, Math.min(100, intensity)) : EFFECT_DEFAULTS[key].intensity,
       color: typeof incoming.color === "string" && incoming.color.length <= 32 ? incoming.color : EFFECT_DEFAULTS[key].color,
       thickness: Number.isFinite(thickness) ? Math.max(1, Math.min(32, thickness)) : EFFECT_DEFAULTS[key].thickness,
