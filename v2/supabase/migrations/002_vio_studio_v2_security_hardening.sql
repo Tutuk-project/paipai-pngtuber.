@@ -131,4 +131,3 @@ create index if not exists vio_support_sessions_active_target_idx
   on public.vio_support_sessions(target_user_id, expires_at)
   where ended_at is null;
 
-comment on migration is 'Vio Studio v2.0 hardens cross-account RLS and active-room Realtime authorization.';
