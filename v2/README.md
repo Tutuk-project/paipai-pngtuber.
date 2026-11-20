@@ -98,7 +98,8 @@ A modular `src/avatar-renderer.js` is wired into the v2 editor and OBS overlay. 
 
 ## 2026-11-20 Vio-Studio v2.0 checkpoints and CI
 
-- Latest checkpoint: `docs/CHECKPOINT-43-2026-11-21.md`.
+- Latest checkpoint: `docs/CHECKPOINT-46-2026-11-21.md`.
+- Previous checkpoints: `docs/CHECKPOINT-45-2026-11-21.md`, `docs/CHECKPOINT-44-2026-11-21.md`, and `docs/CHECKPOINT-43-2026-11-21.md`.
 - Previous checkpoints: `docs/CHECKPOINT-17-2026-11-20.md`, `docs/CHECKPOINT-16-2026-11-20.md`, and `docs/CHECKPOINT-15-2026-11-20.md`.
 - Previous checkpoints: `docs/CHECKPOINT-10-2026-11-20.md`, `docs/CHECKPOINT-09-2026-11-20.md`, and `docs/CHECKPOINT-08-2026-11-20.md`.
 - GitHub Actions workflow: `.github/workflows/vio-v2-ci.yml`.
