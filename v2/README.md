@@ -88,7 +88,7 @@ The development copy now includes additional safeguards:
 - Asset metadata validates path segments, size and allowed expressions.
 - Account deletion halts when Storage/Auth cleanup fails.
 
-The migrations 001–008 and Edge Function `vio-api` have been deployed to the isolated Supabase Development project only. Runtime integration and live RLS/Realtime tests remain required. Supabase Live is untouched.
+The migrations 001–008 and Edge Function `vio-api` v1 are deployed to the isolated Supabase Development project only, with gateway JWT verification enabled. Runtime Auth/bootstrap, Storage, Realtime and multi-device integration tests remain required. Supabase Live is untouched.
 
 - Admin account creation now runs through a single database RPC transaction so the account, profile, pairing code and creation audit cannot be partially committed.
 
