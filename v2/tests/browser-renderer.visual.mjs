@@ -29,7 +29,7 @@ const html = `<!doctype html>
   renderer.setAssets({ idle: avatarSrc, talking: avatarSrc });
   renderer.setAccessories([{ src: accessorySrc, x: 0.76, y: 0.26, w: 0.22, h: 0.24, follow: true, mirror: true, effectsEnabled: true }]);
   renderer.setPreferences({
-    outputWidth: 360, outputHeight: 640, scale: 0.9, mirror: true, breathing: 2, bounce: 0.02, squash: 0.07, sway: 2,
+    outputWidth: 360, outputHeight: 640, scale: 0.9, mirror: true, breathing: 2, bounce: 0.02, squash: 0.07, bounceMs: 240, idleBob: 0.006, sway: 2,
     background: { mode: "gradient", color1: "#182848", color2: "#4b6cb7", angle: 135 },
     effects: {
       enabled: true, stickerEffectsEnabled: true,
