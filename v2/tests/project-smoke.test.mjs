@@ -126,7 +126,7 @@ test("private background media upload is owner-scoped and signed for editor, col
   assert.ok(edge.includes("signBackground(db"));
   assert.ok(edge.includes("profile: profile ? { ...profile, preferences: await signBackground(db, profile.preferences || {}) }"));
   assert.ok(edge.includes("preferences: await signBackground(db, member.vio_profiles?.preferences || {})"));
-  assert.ok(edge.includes("vio-backgrounds").includes("vio-backgrounds") === false || migration.includes("image/jpeg"));
+  assert.ok(edge.includes('storage.from("vio-backgrounds").list'));
   assert.ok(migration.includes("'image/jpeg'"));
   assert.ok(migration.includes("52428800"));
   assert.ok(migration.includes("'vio-backgrounds'"));
