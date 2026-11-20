@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { AvatarRenderer, averageVisibleColor, fisheyeWarpPixels } from "../src/avatar-renderer.js";
+import { AvatarRenderer, averageVisibleColor, fisheyeWarpPixels, normalizeEffects } from "../src/avatar-renderer.js";
 
 function makeContext() {
   const calls = [];
@@ -69,6 +69,30 @@ test("Eagle Eye fisheye mapping preserves the center and is intensity controlled
   assert.deepEqual([...warped.slice(center, center + 4)], [...source.slice(center, center + 4)]);
   assert.notDeepEqual(warped, source);
   assert.equal(warped.length, source.length);
+});
+
+test("effect preferences are normalized, clamped and backward compatible", () => {
+  const effects = normalizeEffects({
+    enabled: false,
+    stickerEffectsEnabled: false,
+    glow: { enabled: true, intensity: 140 },
+    filter: {
+      enabled: true, intensity: 999,
+      states: ["invalid", "talkingBlink"],
+      targets: ["avatar", "admin"],
+      filter: { hue: 999, saturation: -10, brightness: 125 }
+    }
+  });
+  assert.equal(effects.enabled, false);
+  assert.equal(effects.stickerEffectsEnabled, false);
+  assert.equal(effects.bloom.enabled, true);
+  assert.equal(effects.bloom.intensity, 100);
+  assert.equal(effects.filter.intensity, 100);
+  assert.deepEqual(effects.filter.states, ["talking_blink"]);
+  assert.deepEqual(effects.filter.targets, ["avatar"]);
+  assert.equal(effects.filter.filter.hue, 180);
+  assert.equal(effects.filter.filter.saturation, 0);
+  assert.equal(effects.filter.filter.brightness, 125);
 });
 
 test("legacy effects are filtered by state, target and global switches", () => {
