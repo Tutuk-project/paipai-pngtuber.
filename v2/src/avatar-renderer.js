@@ -70,7 +70,26 @@ export class AvatarRenderer {
   }
 
   setBackgroundImage(src) {
-    this.backgroundImage = this.image(src);
+    this.backgroundImage = src ? this.image(src) : null;
+    this.drawOnce();
+  }
+
+  setBackgroundVideo(src) {
+    if (src === this.backgroundVideoSrc) return;
+    this.backgroundVideo?.pause?.();
+    this.backgroundVideo = null;
+    this.backgroundVideoSrc = src || null;
+    if (src) {
+      const video = document.createElement("video");
+      video.muted = true;
+      video.loop = true;
+      video.playsInline = true;
+      video.preload = "auto";
+      video.addEventListener("loadeddata", () => this.drawOnce(), { once: true });
+      video.src = src;
+      this.backgroundVideo = video;
+      video.play().catch(() => {});
+    }
     this.drawOnce();
   }
 
