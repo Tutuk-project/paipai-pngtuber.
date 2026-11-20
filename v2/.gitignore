@@ -1,0 +1,7 @@
+# Local-only configuration and secrets
+src/config.js
+.env
+.env.*
+supabase/functions/.env
+supabase/.temp/
+.DS_Store

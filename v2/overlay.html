@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#000000">
+  <title>Vio Studio · OBS Overlay</title>
+  <style>html,body{margin:0;width:100%;height:100%;overflow:hidden;background:transparent!important}canvas{display:block;width:100vw;height:100vh;object-fit:contain;background:transparent}.status{position:fixed;left:10px;bottom:8px;color:#ffffff75;font:10px system-ui;pointer-events:none}</style>
+</head>
+<body>
+  <canvas id="stage" width="1920" height="1080"></canvas>
+  <div id="status" class="status">Connecting…</div>
+  <script type="module" src="./src/overlay.js"></script>
+</body>
+</html>
