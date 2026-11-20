@@ -351,7 +351,7 @@ test("all v2 accessory, background and cleanup dependencies have ordered migrati
 });
 
 test("Realtime read and write require active, unexpired rooms", () => {
-  const sql = read("supabase/migrations/002_vio_studio_v2_integrity.sql");
+  const sql = read("supabase/migrations/002_vio_studio_v2_security_hardening.sql");
   const readPolicy = sql.slice(sql.indexOf("create policy vio_room_realtime_read"), sql.indexOf("drop policy if exists vio_room_realtime_write"));
   const writePolicy = sql.slice(sql.indexOf("create policy vio_room_realtime_write"));
   for (const policy of [readPolicy, writePolicy]) {
