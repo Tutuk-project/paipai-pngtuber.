@@ -377,7 +377,7 @@ Deno.serve(async (req) => {
       ]);
       if (accountError) throw accountError;
       if (profileError) throw profileError;
-      return json({ ok: true, account, profile: profile || { preferences: {}, active_character_id: null } });
+      return json({ ok: true, account, profile: profile ? { ...profile, preferences: await signBackground(db, profile.preferences || {}) } : { preferences: {}, active_character_id: null } });
     }
 
     if (action === "record_background_asset") {
