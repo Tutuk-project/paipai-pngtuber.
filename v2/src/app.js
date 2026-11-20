@@ -354,6 +354,22 @@ function renderSettings(menuId) {
     });
     mediaField.append(mediaLabel, mediaInput, mediaHint);
     bgWrap.append(mediaField);
+    const clearBackgroundButton = actionButton("Clear uploaded background", async () => {
+      if (!confirm("Remove the current uploaded background and switch to transparent?")) return;
+      try {
+        const result = await api("clear_background");
+        Object.assign(background, result.background);
+        prefs.background = { ...background };
+        mode.value = "transparent";
+        drawPreview();
+        if (currentRoom) await loadRoomMembers();
+        await broadcastMemberAssetsUpdated();
+        if (result.cleanup_pending) alert("Background sudah dilepas dari profil, tetapi file Storage masih menunggu penghapusan. Admin dapat menjalankan retry cleanup.");
+      } catch (error) {
+        alert(`Gagal menghapus background: ${error.message}`);
+      }
+    });
+    bgWrap.append(clearBackgroundButton);
     const effectsTitle = document.createElement("h3"); effectsTitle.textContent = "Visual effects";
     const effectsWrap = document.createElement("div"); effectsWrap.className = "setting-grid";
     const effects = { glow:{enabled:false,intensity:24,color:"#ffd7b8"}, shadow:{enabled:false,intensity:16,color:"#101010"}, stroke:{enabled:false,intensity:45,color:"#ffffff",thickness:5}, filter:{enabled:false,hue:0,saturation:100,brightness:100,contrast:100,grayscale:0,sepia:0}, distort:{enabled:false,intensity:20}, ...(prefs.effects || {}) };
