@@ -24,7 +24,7 @@ function makeRenderer(items, effects = {}) {
   renderer.accessories = items;
   renderer.state = "idle";
   renderer.preferences = { mirror: true, effects: { enabled: true, stickerEffectsEnabled: true, ...effects } };
-  renderer.avatarMotion = { centerX: 100, centerY: 80, rotation: 0.25, scaleX: -2, scaleY: 2 };
+  renderer.avatarMotion = { centerX: 100, centerY: 80, rotation: 0.25, scaleX: 2, scaleY: 2, mirror: true };
   return renderer;
 }
 
@@ -95,7 +95,7 @@ test("following accessory inherits avatar position, rotation and scale", () => {
   renderer.drawAccessories(ctx, 200, 160, 0);
   assert.ok(ctx.calls.some(call => call[0] === "translate" && call[1] === 100 && call[2] === 80));
   assert.ok(ctx.calls.some(call => call[0] === "rotate" && call[1] === 0.25));
-  assert.ok(ctx.calls.some(call => call[0] === "scale" && call[1] === -2 && call[2] === 2));
+  assert.ok(ctx.calls.some(call => call[0] === "scale" && call[1] === 2 && call[2] === 2));
   const draw = ctx.calls.find(call => call[0] === "drawImage");
   assert.equal(draw[4], 40);
   assert.equal(draw[5], 40);
@@ -108,6 +108,14 @@ test("independent accessory does not inherit avatar transforms", () => {
   assert.ok(ctx.calls.some(call => call[0] === "translate" && call[1] === 150 && call[2] === 40));
   assert.equal(ctx.calls.filter(call => call[0] === "rotate").length, 0);
   assert.equal(ctx.calls.filter(call => call[0] === "scale").length, 0);
+});
+
+test("accessory mirror follows the avatar mirror switch instead of double-flipping", () => {
+  const ctx = makeContext();
+  const renderer = makeRenderer([{ image, x: 0.5, y: 0.5, w: 0.2, h: 0.2, follow: true, mirror: true }]);
+  renderer.preferences.mirror = false;
+  renderer.drawAccessories(ctx, 200, 160, 0);
+  assert.equal(ctx.calls.some(call => call[0] === "scale" && call[1] === -1 && call[2] === 1), false);
 });
 
 test("accessory mirror and visual effects are applied only when enabled", () => {
