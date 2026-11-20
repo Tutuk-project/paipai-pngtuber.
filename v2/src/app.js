@@ -1415,10 +1415,18 @@ async function startAdminSupportView(userId) {
     const assetsList = document.createElement("div"); assetsList.className = "asset-list";
     (detail.assets || []).forEach(asset => {
       const row = document.createElement("div"); row.className = "asset-row";
-      const label = document.createElement("span"); label.textContent = `${asset.expression} · ${asset.mime_type} · ${Math.ceil(asset.size_bytes / 1024)} KB`;
+      const assetLabel = asset.name || asset.expression || asset.asset_type || "Uploaded asset";
+      const label = document.createElement("span"); label.textContent = `${assetLabel} · ${asset.mime_type} · ${Math.ceil((Number(asset.size_bytes) || 0) / 1024)} KB`;
       row.append(label);
       if (asset.signed_url) { const link = document.createElement("a"); link.href = asset.signed_url; link.target = "_blank"; link.rel = "noopener"; link.textContent = "Open"; row.append(link); }
-      const remove = actionButton("Delete file", async () => { if (!confirm(`Delete ${asset.expression} asset for @${detail.user.username}?`)) return; await api("admin_delete_asset", { target_user_id: userId, asset_id: asset.id, asset_type: asset.asset_type || "expression", support_session: activeSupportSession?.token }); row.remove(); });
+      const remove = actionButton("Delete file", async () => {
+        if (!confirm(`Delete ${assetLabel} asset for @${detail.user.username}?`)) return;
+        try {
+          const result = await api("admin_delete_asset", { target_user_id: userId, asset_id: asset.id, asset_type: asset.asset_type || "expression", support_session: activeSupportSession?.token });
+          if (result.cleanup_pending) alert("Asset reference removed, but Storage cleanup is still pending. Use the Admin retry control.");
+          row.remove();
+        } catch (error) { alert(`Asset deletion failed: ${error.message}`); }
+      });
       row.append(remove); assetsList.append(row);
     });
     if (!detail.assets?.length) assetsList.textContent = "No uploaded assets.";
