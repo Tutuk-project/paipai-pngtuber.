@@ -48,6 +48,40 @@ async function audit(db: SupabaseClient, actor: string | null, target: string | 
   }
 }
 
+async function enqueueStorageCleanup(db: SupabaseClient, bucketId: string, storagePath: string, requestedBy: string | null, targetUserId: string | null, reason: string) {
+  const { data, error } = await db.from("vio_storage_cleanup_queue").upsert({
+    bucket_id: bucketId,
+    storage_path: storagePath,
+    requested_by: requestedBy,
+    target_user_id: targetUserId,
+    reason,
+    processed_at: null,
+    last_error: null
+  }, { onConflict: "bucket_id,storage_path" }).select("id,bucket_id,storage_path,attempts").single();
+  if (error) throw error;
+  return data;
+}
+
+async function processStorageCleanup(db: SupabaseClient, job: any) {
+  const { error: storageError } = await db.storage.from(job.bucket_id).remove([job.storage_path]);
+  const attempts = (Number(job.attempts) || 0) + 1;
+  if (storageError) {
+    const { error: updateError } = await db.from("vio_storage_cleanup_queue").update({
+      attempts,
+      last_error: String(storageError.message || storageError).slice(0, 1000)
+    }).eq("id", job.id);
+    if (updateError) throw updateError;
+    return { ok: false, error: storageError.message || "Storage deletion failed." };
+  }
+  const { error: updateError } = await db.from("vio_storage_cleanup_queue").update({
+    attempts,
+    last_error: null,
+    processed_at: new Date().toISOString()
+  }).eq("id", job.id);
+  if (updateError) throw updateError;
+  return { ok: true };
+}
+
 async function signBackground(db: SupabaseClient, preferences: any) {
   const background = preferences?.background;
   if (!background?.storage_path || background.bucket_id !== "vio-backgrounds") return preferences || {};
@@ -472,11 +506,14 @@ Deno.serve(async (req) => {
       if (assetType === "accessory") {
         const { data: asset, error: assetError } = await db.from("vio_character_accessories").select("id,bucket_id,storage_path,name").eq("id", assetId).eq("user_id", targetId).single();
         if (assetError) throw assetError;
-        const { error: storageError } = await db.storage.from(asset.bucket_id).remove([asset.storage_path]);
-        if (storageError) throw storageError;
+        const job = await enqueueStorageCleanup(db, asset.bucket_id, asset.storage_path, admin.id, targetId, "admin_support_accessory_delete");
         const { error: rowError } = await db.from("vio_character_accessories").delete().eq("id", assetId).eq("user_id", targetId);
-        if (rowError) throw rowError;
-        await audit(db, admin.id, targetId, "admin_accessory_deleted", { asset_id: assetId, name: asset.name, support_session_id: session.id });
+        if (rowError) {
+          await db.from("vio_storage_cleanup_queue").delete().eq("id", job.id);
+          throw rowError;
+        }
+        const cleanup = await processStorageCleanup(db, job);
+        await audit(db, admin.id, targetId, "admin_accessory_deleted", { asset_id: assetId, name: asset.name, cleanup_pending: !cleanup.ok, support_session_id: session.id });
       } else {
         const { data: asset, error: assetError } = await db.from("vio_character_assets").select("id,bucket_id,storage_path,expression").eq("id", assetId).eq("user_id", targetId).single();
         if (assetError) throw assetError;
@@ -724,11 +761,14 @@ Deno.serve(async (req) => {
       const accessoryId = String(body.accessory_id || "");
       const { data: accessory, error: lookupError } = await db.from("vio_character_accessories").select("id,bucket_id,storage_path").eq("id", accessoryId).eq("user_id", user.id).single();
       if (lookupError) throw lookupError;
-      const { error: storageError } = await db.storage.from(accessory.bucket_id).remove([accessory.storage_path]);
-      if (storageError) throw storageError;
-      const { error } = await db.from("vio_character_accessories").delete().eq("id", accessoryId).eq("user_id", user.id);
-      if (error) throw error;
-      return json({ ok: true });
+      const job = await enqueueStorageCleanup(db, accessory.bucket_id, accessory.storage_path, user.id, user.id, "user_accessory_delete");
+      const { error: rowError } = await db.from("vio_character_accessories").delete().eq("id", accessoryId).eq("user_id", user.id);
+      if (rowError) {
+        await db.from("vio_storage_cleanup_queue").delete().eq("id", job.id);
+        throw rowError;
+      }
+      const cleanup = await processStorageCleanup(db, job);
+      return json({ ok: true, cleanup_pending: !cleanup.ok });
     }
 
     if (action === "issue_room_overlay") {
