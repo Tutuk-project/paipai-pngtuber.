@@ -62,4 +62,6 @@ jobs:
           node --check src/avatar-renderer.js
           node --check src/audio-engine.js
           node --check src/overlay.js
+          node --check tests/browser-renderer.visual.mjs
+          node --check tests/browser-renderer.performance.mjs
           node --test tests/*.test.mjs
