@@ -1195,8 +1195,9 @@ async function uploadCharacterAccessories(files) {
       const { error } = await supabase.storage.from("vio-studio-assets").upload(storagePath, file, { upsert: false, contentType: file.type, cacheControl: "3600" });
       if (error) throw error;
       const index = characterAccessories.length + 1;
-      await api("record_accessory", { character_id: activeCharacterId, storage_path: storagePath, name: `Aksesori ${index}`, mime_type: file.type, size_bytes: file.size });
+      const recordResult = await api("record_accessory", { character_id: activeCharacterId, storage_path: storagePath, name: `Aksesori ${index}`, mime_type: file.type, size_bytes: file.size });
       recorded = true;
+      if (recordResult.audit_warning) showAppToast("Aksesori tersimpan, tetapi audit log gagal ditulis.", "error");
     } catch (error) {
       if (storagePath && !recorded) {
         const { error: cleanupError } = await supabase.storage.from("vio-studio-assets").remove([storagePath]);
@@ -1319,14 +1320,14 @@ async function uploadCharacterAsset(state, file) {
     uploadedPath = storagePath;
     const { data: signed, error: signedError } = await supabase.storage.from("vio-studio-assets").createSignedUrl(storagePath, 3600);
     if (signedError) throw signedError;
-    await api("record_asset", { character_id: activeCharacterId, storage_path: storagePath, expression: state, mime_type: file.type, size_bytes: file.size });
+    const recordResult = await api("record_asset", { character_id: activeCharacterId, storage_path: storagePath, expression: state, mime_type: file.type, size_bytes: file.size });
     uploadedPath = null;
     assetUrls[state] = signed.signedUrl;
     drawPreview();
     renderAccessoryQuickScales();
     if (currentRoom) await loadRoomMembers();
     await broadcastMemberAssetsUpdated();
-    showAppToast(`${state.replace("_"," ").toUpperCase()} berhasil diunggah`);
+    showAppToast(recordResult.audit_warning ? `${state.toUpperCase()} tersimpan, tetapi audit log gagal ditulis.` : `${state.replace("_"," ").toUpperCase()} berhasil diunggah`, recordResult.audit_warning ? "error" : "success");
   } catch (error) {
     if (uploadedPath) {
       const { error: cleanupError } = await supabase.storage.from("vio-studio-assets").remove([uploadedPath]);
