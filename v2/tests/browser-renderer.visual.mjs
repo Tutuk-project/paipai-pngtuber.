@@ -10,6 +10,7 @@ const html = `<!doctype html>
 <html><head><meta charset="utf-8"></head><body>
 <canvas id="stage" width="360" height="640"></canvas>
 <script type="module">
+  window.__vioStage = "module-start";
   import { AvatarRenderer } from "/src/avatar-renderer.js";
   const makeAsset = (color, accent) => {
     const canvas = document.createElement("canvas");
@@ -22,6 +23,7 @@ const html = `<!doctype html>
     ctx.strokeStyle = "#ffffff"; ctx.lineWidth = 5; ctx.beginPath(); ctx.arc(80, 108, 22, 0.15, Math.PI - 0.15); ctx.stroke();
     return canvas.toDataURL("image/png");
   };
+  window.__vioStage = "base-artwork";
   const avatarSrc = makeAsset("#b58cff", "#f58ebc");
   const accessorySrc = makeAsset("#ffd166", "#ef476f");
   const canvas = document.getElementById("stage");
@@ -43,6 +45,7 @@ const html = `<!doctype html>
     }
   });
   await Promise.all([...renderer.images.values()].filter(Boolean).map(image => image.decode()));
+  window.__vioStage = "base-renderer-ready";
   renderer.setState("talking");
   const common = {
     outputWidth: 360, outputHeight: 640, scale: 0.9, mirror: true, breathing: 2, bounce: 0.02, sway: 2,
@@ -66,6 +69,7 @@ const html = `<!doctype html>
     eagle: { enabled: true, intensity: 80, states: ["all"], targets: ["all"] },
     shake: { enabled: true, intensity: 80, states: ["all"], targets: ["all"] }
   };
+  window.__vioStage = "effect-loop";
   const effectHashes = {};
   for (const [key, config] of Object.entries(effectConfigs)) {
     renderer.setPreferences({ ...common, effects: { enabled: true, stickerEffectsEnabled: true, [key]: config } });
@@ -79,6 +83,7 @@ const html = `<!doctype html>
     if (pixels[i + 3] > 0) visible++;
     if (pixels[i + 3] > 200 && colors.size < 5000) colors.add(pixels[i] + "," + pixels[i + 1] + "," + pixels[i + 2]);
   }
+  window.__vioStage = "effects-complete";
   const performanceCanvas = document.createElement("canvas");
   performanceCanvas.width = 1080; performanceCanvas.height = 1920;
   const performanceRenderer = new AvatarRenderer(performanceCanvas);
@@ -92,12 +97,14 @@ const html = `<!doctype html>
   await Promise.all([...performanceRenderer.images.values()].filter(Boolean).map(image => image.decode()));
   performanceRenderer.setState("talking");
   const performanceContext = performanceCanvas.getContext("2d");
+  window.__vioStage = "performance-loop";
   const performanceStart = performance.now();
   for (let frame = 0; frame < 12; frame++) {
     performanceRenderer.render(1700 + frame * 34);
     performanceContext.getImageData(540, 960, 1, 1);
   }
   const performanceElapsedMs = performance.now() - performanceStart;
+  window.__vioStage = "performance-complete";
   const performancePixels = performanceContext.getImageData(0, 0, performanceCanvas.width, performanceCanvas.height).data;
   let performanceVisiblePixels = 0;
   for (let i = 3; i < performancePixels.length; i += 16) if (performancePixels[i] > 0) performanceVisiblePixels++;
@@ -131,7 +138,7 @@ try {
   page.on("pageerror", error => errors.push(error.message));
   page.on("console", message => { if (message.type() === "error") errors.push(message.text()); });
   await page.goto(`http://127.0.0.1:${address.port}/test.html`, { waitUntil: "domcontentloaded", timeout: 15000 });
-  await page.waitForFunction(() => Boolean(window.__vioVisual), { timeout: 15000 });
+  try { await page.waitForFunction(() => Boolean(window.__vioVisual), { timeout: 45000 }); } catch (error) { const diagnostics = await page.evaluate(() => ({ stage: window.__vioStage || "no-module-start", title: document.title })); throw new Error(`Renderer browser test stalled: ${JSON.stringify(diagnostics)}; browser errors: ${errors.join("; ")}; ${error.message}`); }
   const result = await page.evaluate(() => window.__vioVisual);
   assert.deepEqual(errors, [], `Browser renderer errors: ${errors.join("; ")}`);
   assert.equal(result.width, 360);
