@@ -46,6 +46,17 @@ jobs:
           test -f "$source_dir/supabase/functions/vio-api/index.ts"
           mkdir -p v2
           cp -a "$source_dir/." v2/
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path("v2/src/overlay.js")
+          data = p.read_bytes()
+          bad = b'\\nwindow.addEventListener("pagehide", () => { for (const entry of playerRenderers.values()) entry.renderer.stop(); });\\n'
+          good = b'\nwindow.addEventListener("pagehide", () => { for (const entry of playerRenderers.values()) entry.renderer.stop(); });\n'
+          if bad not in data:
+              raise SystemExit("Expected malformed literal newline sequence not found; refusing silent patch")
+          p.write_bytes(data.replace(bad, good, 1))
+          print("Fixed escaped newline at end of src/overlay.js")
+          PY
           cd v2
           bash tests/check-syntax.sh
           rm "$archive"
