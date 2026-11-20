@@ -1186,6 +1186,21 @@ async function loadAdminOverview() {
     $("adminUserCount").textContent = result.users.length;
     $("adminRoomCount").textContent = result.active_rooms;
     $("adminAssetCount").textContent = result.asset_count;
+    const cleanupButton = document.createElement("button");
+    cleanupButton.className = "button button-quiet";
+    cleanupButton.textContent = `Retry pending Storage cleanup (${result.cleanup_pending_count || 0})`;
+    cleanupButton.disabled = !(result.cleanup_pending_count > 0);
+    cleanupButton.addEventListener("click", async () => {
+      cleanupButton.disabled = true;
+      try {
+        const retry = await api("admin_retry_storage_cleanup");
+        alert(`Storage cleanup: ${retry.processed} object(s) removed, ${retry.pending} still pending.`);
+        await loadAdminOverview();
+      } catch (error) {
+        alert(`Storage cleanup retry failed: ${error.message}`);
+        cleanupButton.disabled = false;
+      }
+    });
     const table = document.createElement("table"); table.className = "data-table";
     table.innerHTML = "<thead><tr><th>Username</th><th>Role</th><th>Status</th><th>Actions</th></tr></thead>";
     const tbody = document.createElement("tbody");
@@ -1240,7 +1255,7 @@ async function loadAdminOverview() {
       tr.append(time, action, actor, target, details); auditBody.append(tr);
     });
     auditTable.append(auditBody);
-    $("adminAuditLog").replaceChildren(auditTitle, auditTable);
+    $("adminAuditLog").replaceChildren(auditTitle, cleanupButton, auditTable);
   } catch (error) {
     $("adminUsersTable").textContent = `Admin API belum tersedia: ${error.message}`;
   }
