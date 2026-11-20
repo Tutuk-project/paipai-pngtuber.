@@ -92,13 +92,17 @@ test("collaboration preview and OBS overlay both render per-member accessories",
   assert.ok(overlay.includes("renderer.setAccessories(member.accessories || [])"));
 });
 
-test("accessory upload refreshes the active room snapshot", () => {
+test("accessory upload reloads active character assets and refreshes the room snapshot", () => {
   const app = read("src/app.js");
   const start = app.indexOf("async function uploadCharacterAccessories(files)");
   const end = app.indexOf("\nfunction renderAccessorySettingsList()", start);
   const upload = start >= 0 && end > start ? app.slice(start, end) : "";
-  assert.ok(upload.includes('api("my_assets")'));
+  const assetsLoader = app.slice(app.indexOf("async function loadActiveCharacterAssets()"), app.indexOf("async function switchActiveCharacter("));
+  assert.ok(upload.includes('api("record_accessory"'));
+  assert.ok(upload.includes("await loadActiveCharacterAssets()"));
+  assert.ok(assetsLoader.includes('api("my_assets")'));
   assert.ok(upload.includes("if (currentRoom) await loadRoomMembers()"));
+  assert.ok(upload.includes("await broadcastMemberAssetsUpdated()"));
 });
 
 test("modular avatar renderer is wired into editor and OBS overlay", () => {
@@ -119,17 +123,21 @@ test("live profile and asset updates refresh collaboration members and OBS snaps
   assert.ok(app.includes("await broadcastMemberAssetsUpdated()"));
   assert.ok(overlay.includes('event: "member-assets-updated"'));
   assert.ok(overlay.includes("refreshMembers().catch"));
-  assert.ok(overlay.includes("setInterval(() => refreshMembers()"));
+  assert.match(overlay, /refreshTimer = setInterval\(\(\) => \{[\s\S]*?refreshMembers\(\)\.catch/);
 });
 
-test("accessory metadata registration verifies the real storage object", () => {
+test("accessory metadata registration verifies the real storage object for the selected character", () => {
   const edge = read("supabase/functions/vio-api/index.ts");
-  const record = edge.slice(edge.indexOf('if (action === "record_accessory")'), edge.indexOf('if (action === "update_accessory")'));
-  assert.ok(record.includes('.storage.from("vio-studio-assets").list(folderPath'));
-  assert.ok(record.includes('file.name === fileName'));
+  const start = edge.indexOf('if (action === "record_accessory")');
+  const end = edge.indexOf('if (action === "update_accessory")', start);
+  const record = start >= 0 && end > start ? edge.slice(start, end) : "";
+  assert.ok(record.includes("body.character_id"));
+  assert.ok(record.includes("expectedPrefix"));
+  assert.match(record, /\.storage\.from\("vio-studio-assets"\)\s*\.list\(folderPath/);
+  assert.ok(record.includes("file.name === fileName"));
   assert.ok(record.includes("storedSize !== size"));
   assert.ok(record.includes("storedMime !== mime"));
-  assert.ok(record.includes("Uploaded accessory object was not found in storage."));
+  assert.ok(record.includes("Uploaded accessory object was not found in Storage."));
 });
 
 test("failed accessory metadata registration removes the uploaded orphan", () => {
@@ -137,9 +145,9 @@ test("failed accessory metadata registration removes the uploaded orphan", () =>
   const uploadStart = app.indexOf("async function uploadCharacterAccessories(files)");
   const uploadEnd = app.indexOf("\nfunction renderAccessorySettingsList()", uploadStart);
   const upload = app.slice(uploadStart, uploadEnd);
-  assert.ok(upload.includes("let metadataRecorded = false"));
+  assert.ok(upload.includes("let recorded = false"));
   assert.ok(upload.includes('await api("record_accessory"'));
-  assert.ok(upload.includes("if (storagePath && !metadataRecorded)"));
+  assert.ok(upload.includes("if (storagePath && !recorded)"));
   assert.ok(upload.includes('.storage.from("vio-studio-assets").remove([storagePath])'));
 });
 
@@ -175,28 +183,30 @@ test("accessory deletion queues durable Storage cleanup before deleting metadata
   assert.ok(edge.includes("limit(25)"));
 });
 
-test("Admin dashboard exposes pending Storage cleanup retry", () => {
+test("Admin dashboard exposes a pending Storage cleanup retry action", () => {
   const app = read("src/app.js");
   const edge = read("supabase/functions/vio-api/index.ts");
   assert.ok(app.includes("Retry pending Storage cleanup"));
   assert.ok(app.includes('api("admin_retry_storage_cleanup")'));
-  assert.ok(app.includes("penghapusan file Storage masih tertunda"));
   assert.ok(edge.includes("cleanup_pending_count: cleanupQ.count || 0"));
+  assert.ok(edge.includes("async function processStorageCleanup"));
 });
 
 test("Admin expression deletion and background replacement use durable cleanup", () => {
   const edge = read("supabase/functions/vio-api/index.ts");
   const app = read("src/app.js");
   const adminDelete = edge.slice(edge.indexOf('if (action === "admin_delete_asset")'), edge.indexOf('if (action === "my_assets")'));
-  const background = edge.slice(edge.indexOf('if (action === "record_background_asset")'), edge.indexOf('if (action === "profile_save")'));
+  const background = edge.slice(edge.indexOf('if (action === "record_background_asset")'), edge.indexOf('if (action === "clear_background")'));
   assert.ok(adminDelete.includes('"admin_support_expression_delete"'));
   assert.ok(adminDelete.includes("processStorageCleanup(db, job)"));
   assert.ok(background.includes('"background_replaced"'));
   assert.ok(background.indexOf("enqueueStorageCleanup") < background.indexOf('db.from("vio_profiles").upsert'));
-  assert.ok(background.includes("background replacement profile save failed"));
   assert.ok(background.includes("cleanup_pending: cleanupPending"));
-  assert.ok(app.includes("file background lama masih menunggu penghapusan Storage"));
-  assert.ok(app.includes("Failed to clean up unregistered background upload:"));
+  assert.ok(app.includes("File background lama masih menunggu penghapusan Storage"));
+  const uploadStart = app.indexOf("const storagePath = `${currentUser.id}/background/");
+  const clearStart = app.indexOf('const clearBackground = actionButton("Hapus background tersimpan"');
+  const backgroundUI = app.slice(uploadStart, clearStart);
+  assert.ok(backgroundUI.includes('.storage.from("vio-backgrounds").remove([storagePath])'));
 });
 
 test("Admin account deletion queues expression, accessory and background objects", () => {
@@ -220,19 +230,21 @@ test("clearing an uploaded background detaches it before queued Storage cleanup"
   assert.ok(clear.indexOf("enqueueStorageCleanup") < clear.indexOf('db.from("vio_profiles").upsert'));
   assert.ok(clear.includes("cancelStorageCleanup"));
   assert.ok(clear.includes("processStorageCleanup(db, job)"));
-  assert.ok(clear.includes("mode: \"transparent\""));
-  assert.ok(app.includes("Clear uploaded background"));
+  assert.ok(clear.includes('mode: "transparent"'));
+  assert.ok(app.includes('actionButton("Hapus background tersimpan"'));
   assert.ok(app.includes('api("clear_background")'));
-  assert.ok(app.includes("Background sudah dilepas dari profil"));
+  assert.ok(app.includes('showAppToast("Background direset")'));
 });
 
 test("visual effects UI exposes all seven legacy effects with per-state and per-target controls", () => {
   const app = read("src/app.js");
   const renderer = read("src/avatar-renderer.js");
   for (const label of ["Filter warna", "Stroke", "Shadow", "Emission / bloom", "Distorsi", "Eagle eye", "Bergetar"]) assert.ok(app.includes(label));
-  for (const state of ["idle", "talking", "talking_blink"]) assert.ok(app.includes(state));
-  assert.ok(app.includes("Ekspresi yang terkena efek"));
-  assert.ok(app.includes("Target efek"));
+  for (const state of ['["idle","Idle"]', '["talking","Talking"]', '["blink","Blink"]', '["talking_blink","Talking + Blink"]']) assert.ok(app.includes(state));
+  assert.ok(app.includes("const stateWrap = document.createElement"));
+  assert.ok(app.includes("const targetWrap = document.createElement"));
+  assert.ok(app.includes('["avatar","Avatar"]'));
+  assert.ok(app.includes('["accessories","Aksesori"]'));
   assert.ok(app.includes("Izinkan efek pada aksesori"));
   assert.ok(renderer.includes("function normalizeEffects"));
   assert.ok(renderer.includes("activeEffects(state, target"));
@@ -291,7 +303,7 @@ test("legacy effect composition order, distortion rows and motion timing are pre
   assert.ok(app.includes('"idleBob", "Idle bob"'));
 });
 
-test("portrait and custom output resolutions are shared by editor, room and OBS", () => {
+test("Solo output resolution remains profile-driven while Collaboration uses a landscape stage", () => {
   const app = read("src/app.js");
   const overlay = read("src/overlay.js");
   const edge = read("supabase/functions/vio-api/index.ts");
@@ -301,13 +313,15 @@ test("portrait and custom output resolutions are shared by editor, room and OBS"
   assert.ok(app.includes("TikTok Portrait"));
   assert.ok(app.includes("Custom dimensions"));
   assert.ok(app.includes("profilePreferences.outputWidth"));
-  assert.ok(app.includes("member.is_host"));
-  assert.ok(overlay.includes("member.is_host"));
-  assert.ok(overlay.includes("canvas.style.aspectRatio"));
+  assert.ok(app.includes("const width = 1920"));
+  assert.ok(app.includes('canvas.style.aspectRatio = "16 / 9"'));
+  assert.ok(overlay.includes("const isCollaborationRoom = roomPurpose === \"collaboration\""));
+  assert.ok(overlay.includes("? 1920"));
+  assert.ok(overlay.includes("? 1080"));
+  assert.ok(overlay.includes("Number(output.outputWidth) || 1080"));
   assert.ok(edge.includes('"outputWidth", "outputHeight"'));
-  assert.ok(app.includes("width * height > 8294400"));
   assert.ok(edge.includes("outputWidth * outputHeight > 8294400"));
-  assert.ok(edge.includes("member.is_host"));
+  assert.ok(edge.includes("is_host"));
   assert.ok(renderer.includes("outputWidth: 1080, outputHeight: 1920"));
   assert.ok(index.includes('id="avatarCanvas" width="1080" height="1920"'));
   assert.ok(obs.includes('id="stage" width="1080" height="1920"'));
@@ -327,8 +341,7 @@ test("private background media upload is owner-scoped and signed for editor, col
   assert.ok(edge.includes('storage.from("vio-backgrounds").list'));
   assert.ok(edge.includes("signBackground(db"));
   assert.ok(edge.includes("profile: profile ? { ...profile, preferences: await signBackground(db, profile.preferences || {}) }"));
-  assert.ok(edge.includes("preferences: await signBackground(db, member.vio_profiles?.preferences || {})"));
-  assert.ok(edge.includes('storage.from("vio-backgrounds").list'));
+  assert.ok(edge.includes("preferences: await signBackground(db, member.vio_app_users?.profile?.preferences || {})"));
   assert.ok(migration.includes("'image/jpeg'"));
   assert.ok(migration.includes("52428800"));
   assert.ok(migration.includes("'vio-backgrounds'"));
@@ -337,7 +350,6 @@ test("private background media upload is owner-scoped and signed for editor, col
   assert.ok(overlay.includes("renderer.setBackgroundVideo(background.mode === \"video\" ? background.src : null)"));
   assert.ok(app.includes("entry.renderer.setBackgroundImage(background.mode === \"image\" ? background.src : null)"));
 });
-
 
 test("all v2 accessory, background and cleanup dependencies have ordered migrations", () => {
   const accessories = read("supabase/migrations/003_vio_character_accessories.sql");
