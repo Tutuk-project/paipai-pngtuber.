@@ -205,3 +205,11 @@ test("overlay API returns room purpose for Solo or Collaboration rendering", () 
   assert.match(handler, /select\("id,status,purpose,overlay_token_hash/);
   assert.match(handler, /purpose: room\.purpose/);
 });
+
+
+test("Solo overlay accepts Creator Talking broadcasts as a fallback even when local CEF mic capture starts", () => {
+  const overlay = read("src/overlay.js");
+  assert.match(overlay, /localMicActive && payload\.user_id === localMicUserId && payload\.state !== "talking"/);
+  assert.match(overlay, /states\.set\(payload\.user_id, payload\.state\)/);
+  assert.match(overlay, /startInvisibleSoloMicrophone/);
+});
