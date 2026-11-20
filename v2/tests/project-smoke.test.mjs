@@ -168,7 +168,9 @@ test("accessory deletion queues durable Storage cleanup before deleting metadata
   assert.ok(edge.includes("async function processStorageCleanup"));
   assert.ok(userDelete.indexOf("enqueueStorageCleanup") < userDelete.indexOf('.delete().eq("id", accessoryId)'));
   assert.ok(userDelete.includes("cleanup_pending: !cleanup.ok"));
+  assert.ok(userDelete.includes("Cancelled because accessory metadata deletion failed."));
   assert.ok(adminDelete.includes("admin_support_accessory_delete"));
+  assert.ok(adminDelete.includes("Cancelled because accessory metadata deletion failed."));
   assert.ok(edge.includes('action === "admin_retry_storage_cleanup"'));
   assert.ok(edge.includes("limit(25)"));
 });
@@ -178,6 +180,7 @@ test("Admin dashboard exposes pending Storage cleanup retry", () => {
   const edge = read("supabase/functions/vio-api/index.ts");
   assert.ok(app.includes("Retry pending Storage cleanup"));
   assert.ok(app.includes('api("admin_retry_storage_cleanup")'));
+  assert.ok(app.includes("penghapusan file Storage masih tertunda"));
   assert.ok(edge.includes("cleanup_pending_count: cleanupQ.count || 0"));
 });
 
